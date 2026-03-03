@@ -1,0 +1,15 @@
+enum Unit {
+  gram,
+  kilogram,
+  milliliter,
+  liter,
+  teaspoon,
+  tablespoon,
+  pinch,
+  piece,
+  can,
+  clove,
+  bunch,
+  packet,
+  unknown,
+}
