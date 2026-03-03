@@ -1,5 +1,6 @@
 name: recipe_parser
-description: "A new Flutter package project."
+description: "Reipce parsing for Kondate"
+publish_to: "none"
 version: 0.0.1
 homepage:
 
@@ -8,8 +9,8 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
-  flutter:
-    sdk: flutter
+#  flutter:
+#    sdk: flutter
   core:
     path: ../core
 

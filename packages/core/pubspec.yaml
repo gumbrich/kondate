@@ -1,5 +1,6 @@
 name: core
-description: "A new Flutter package project."
+description: "Core domain models for Kondate"
+publish_to: "none"
 version: 0.0.1
 homepage:
 
