@@ -1,0 +1,38 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Mobile
+        run: |
+          cd apps/mobile
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Core
+        run: |
+          cd packages/core
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Recipe Parser
+        run: |
+          cd packages/recipe_parser
+          flutter pub get
+          flutter analyze
+          flutter test
