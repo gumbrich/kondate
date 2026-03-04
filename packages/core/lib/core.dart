@@ -8,3 +8,8 @@ export 'units/quantity.dart';
 export 'units/unit_lexicon_de.dart';
 export 'units/unit_format_de.dart';
 export 'units/quantity_parser_de.dart';
+
+export 'shopping/shopping_list.dart';
+export 'shopping/shopping_list_item.dart';
+export 'shopping/ingredient_aggregator.dart';
+export 'shopping/ingredient_name_normalizer_de.dart';
