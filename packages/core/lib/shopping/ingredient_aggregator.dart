@@ -6,8 +6,8 @@ import 'shopping_list.dart';
 import 'shopping_list_item.dart';
 
 class IngredientAggregator {
-  /// Aggregates ingredients from recipes into a ShoppingList.
-  /// targetServings: e.g. 2.5 for your household.
+  /// Aggregates ingredients from recipes into a shopping list.
+  /// Quantities are scaled to the desired number of servings.
   static ShoppingList fromRecipes(
     List<Recipe> recipes, {
     required double targetServings,
@@ -18,43 +18,49 @@ class IngredientAggregator {
       final factor = _scaleFactor(recipe.defaultServings, targetServings);
 
       for (final line in recipe.ingredients) {
-        final name = (line.normalizedName?.trim().isNotEmpty ?? false)
-            ? line.normalizedName!.trim()
+        final normalized = line.normalizedName?.trim();
+        final name = (normalized?.isNotEmpty ?? false)
+            ? normalized!
             : IngredientNameNormalizerDe.normalize(line.raw);
 
-        final q = line.quantity == null ? null : line.quantity!.scale(factor);
+        final q = line.quantity?.scale(factor);
 
-        // Key merges by name + unit + (quantity present?)
         final unit = q?.unit ?? Unit.unknown;
         final key = '${name}__${unit.name}__${q == null ? "noqty" : "qty"}';
 
         final a = acc.putIfAbsent(
           key,
-          () => _Accumulator(name: name, unit: unit, quantity: null, hasQuantity: q != null),
+          () => _Accumulator(
+            name: name,
+            unit: unit,
+            quantity: null,
+            hasQuantity: q != null,
+          ),
         );
 
         if (q == null) {
-          // We don't sum unknown quantities.
           continue;
         }
 
-        // Sum same-unit quantities
-        a.quantity = a.quantity == null
-            ? q
-            : Quantity(a.quantity!.value + q.value, q.unit);
+        if (a.quantity == null) {
+          a.quantity = q;
+        } else {
+          a.quantity = Quantity(
+            a.quantity!.value + q.value,
+            q.unit,
+          );
+        }
       }
     }
 
     final items = acc.values.map((a) {
-      final displayName = a.name; // already normalized; later: keep original casing
       return ShoppingListItem(
-        name: displayName,
+        name: a.name,
         quantity: a.hasQuantity ? a.quantity : null,
         unit: a.unit,
       );
     }).toList();
 
-    // Stable-ish ordering: by name then unit
     items.sort((x, y) {
       final c = x.name.compareTo(y.name);
       if (c != 0) return c;
@@ -65,7 +71,9 @@ class IngredientAggregator {
   }
 
   static double _scaleFactor(double? defaultServings, double targetServings) {
-    if (defaultServings == null || defaultServings <= 0) return 1.0;
+    if (defaultServings == null || defaultServings <= 0) {
+      return 1.0;
+    }
     return targetServings / defaultServings;
   }
 }
