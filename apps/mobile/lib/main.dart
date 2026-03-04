@@ -54,11 +54,11 @@ class _ImportRecipeScreenState extends State<ImportRecipeScreen> {
           return "${q.value} ${q.unit.name} — ${e.raw}";
         }).toList();
       });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    } finally {
+    } catch (e, st) {
+  setState(() {
+    _error = '$e\n\n$st';
+  });
+  } finally {
       setState(() {
         _loading = false;
       });
