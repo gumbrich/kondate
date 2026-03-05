@@ -1,14 +1,17 @@
 import '../units/quantity.dart';
 import '../units/unit.dart';
+import 'category_de.dart';
 
 class ShoppingListItem {
-  final String name; // German display name for now
-  final Quantity? quantity; // null = "some amount"
-  final Unit unit; // convenience, mirrors quantity.unit when quantity != null
+  final String name;
+  final Quantity? quantity;
+  final Unit unit;
+  final CategoryDe category;
 
   const ShoppingListItem({
     required this.name,
     required this.quantity,
     required this.unit,
+    required this.category,
   });
 }
