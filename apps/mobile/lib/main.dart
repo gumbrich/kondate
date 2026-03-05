@@ -1,3 +1,4 @@
+import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 import 'package:recipe_parser/recipe_parser.dart';
 
@@ -10,28 +11,31 @@ class KondateApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: ImportRecipeScreen(),
-    );
+    return const MaterialApp(home: KondateHome());
   }
 }
 
-class ImportRecipeScreen extends StatefulWidget {
-  const ImportRecipeScreen({super.key});
+class KondateHome extends StatefulWidget {
+  const KondateHome({super.key});
 
   @override
-  State<ImportRecipeScreen> createState() => _ImportRecipeScreenState();
+  State<KondateHome> createState() => _KondateHomeState();
 }
 
-class _ImportRecipeScreenState extends State<ImportRecipeScreen> {
-  final _controller = TextEditingController();
+class _KondateHomeState extends State<KondateHome> {
+  final _urlController = TextEditingController();
+
   bool _loading = false;
   String? _error;
-  String? _title;
-  List<String> _ingredients = [];
 
-  Future<void> _import() async {
-    final urlText = _controller.text.trim();
+  // In-memory “week”
+  final List<Recipe> _recipes = [];
+
+  // Household default
+  final double _targetServings = 2.5;
+
+  Future<void> _importAndAdd() async {
+    final urlText = _urlController.text.trim();
     if (urlText.isEmpty) return;
 
     setState(() {
@@ -47,66 +51,165 @@ class _ImportRecipeScreenState extends State<ImportRecipeScreen> {
       );
 
       setState(() {
-        _title = recipe.title;
-        _ingredients = recipe.ingredients.map((e) {
-          final q = e.quantity;
-          if (q == null) return e.raw;
-          return "${q.value} ${q.unit.name} — ${e.raw}";
-        }).toList();
+        _recipes.add(recipe);
+        _urlController.clear();
       });
     } catch (e, st) {
-  setState(() {
-    _error = '$e\n\n$st';
-  });
-  } finally {
+      setState(() {
+        _error = '$e\n\n$st';
+      });
+    } finally {
       setState(() {
         _loading = false;
       });
     }
   }
 
+  void _openShoppingList() {
+    final list = IngredientAggregator.fromRecipes(
+      _recipes,
+      targetServings: _targetServings,
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ShoppingListScreen(
+          targetServings: _targetServings,
+          recipes: _recipes,
+          list: list,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final canGenerate = _recipes.isNotEmpty && !_loading;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Kondate – Import Recipe")),
+      appBar: AppBar(title: const Text('Kondate – MVP')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextField(
-              controller: _controller,
+              controller: _urlController,
               decoration: const InputDecoration(
-                labelText: "Recipe URL",
+                labelText: 'Recipe URL (JSON-LD)',
               ),
             ),
             const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _loading ? null : _import,
-              child: const Text("Import"),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: _loading ? null : _importAndAdd,
+                  child: const Text('Import & add'),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: canGenerate ? _openShoppingList : null,
+                  child: const Text('Shopping list'),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            if (_loading) const CircularProgressIndicator(),
-            if (_error != null)
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
-            if (_title != null) ...[
-              Text(
-                _title!,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            if (_loading) const LinearProgressIndicator(),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
               Expanded(
-                child: ListView(
-                  children:
-                      _ingredients.map((e) => ListTile(title: Text(e))).toList(),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Added recipes (${_recipes.length})',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _recipes.length,
+                  itemBuilder: (_, i) {
+                    final r = _recipes[i];
+                    return ListTile(
+                      title: Text(r.title),
+                      subtitle: Text(
+                        'Servings: ${r.defaultServings?.toString() ?? "?"} • ${r.sourceUrl}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () {
+                          setState(() {
+                            _recipes.removeAt(i);
+                          });
+                        },
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class ShoppingListScreen extends StatelessWidget {
+  final double targetServings;
+  final List<Recipe> recipes;
+  final ShoppingList list;
+
+  const ShoppingListScreen({
+    super.key,
+    required this.targetServings,
+    required this.recipes,
+    required this.list,
+  });
+
+  String _formatQty(ShoppingListItem item) {
+    final q = item.quantity;
+    if (q == null) return item.name;
+
+    // MVP formatting: use German unit short forms where we have them
+    final unit = UnitFormatDe.short(q.unit);
+    final value = _prettyNumber(q.value);
+
+    if (unit.isEmpty) return '$value ${item.name}';
+    return '$value $unit ${item.name}';
+  }
+
+  String _prettyNumber(double x) {
+    // Keep it simple for MVP: max 2 decimals, trim trailing zeros
+    final s = x.toStringAsFixed(2);
+    return s.replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Shopping list (${targetServings}p)'),
+      ),
+      body: ListView.builder(
+        itemCount: list.items.length,
+        itemBuilder: (_, i) {
+          final item = list.items[i];
+          return ListTile(
+            title: Text(_formatQty(item)),
+          );
+        },
       ),
     );
   }
