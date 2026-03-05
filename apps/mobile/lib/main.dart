@@ -29,7 +29,6 @@ class _KondateHomeState extends State<KondateHome> {
   String? _error;
 
   final List<Recipe> _recipes = [];
-
   final double _targetServings = 2.5;
 
   Future<void> _importAndAdd() async {
@@ -169,7 +168,7 @@ class _KondateHomeState extends State<KondateHome> {
   }
 }
 
-class ShoppingListScreen extends StatelessWidget {
+class ShoppingListScreen extends StatefulWidget {
   final double targetServings;
   final ShoppingList list;
 
@@ -179,6 +178,11 @@ class ShoppingListScreen extends StatelessWidget {
     required this.list,
   });
 
+  @override
+  State<ShoppingListScreen> createState() => _ShoppingListScreenState();
+}
+
+class _ShoppingListScreenState extends State<ShoppingListScreen> {
   static const List<CategoryDe> _categoryOrder = <CategoryDe>[
     CategoryDe.gemuese,
     CategoryDe.obst,
@@ -193,6 +197,8 @@ class ShoppingListScreen extends StatelessWidget {
     CategoryDe.getraenke,
     CategoryDe.sonstiges,
   ];
+
+  final Set<String> _checkedKeys = <String>{};
 
   String _categoryLabel(CategoryDe c) {
     switch (c) {
@@ -239,13 +245,22 @@ class ShoppingListScreen extends StatelessWidget {
     return '$value $unit ${item.name}';
   }
 
+  String _itemKey(ShoppingListItem item) {
+    final q = item.quantity;
+    final qtyKey = q == null ? 'noqty' : '${q.value}:${q.unit.name}';
+    return '${item.category.name}__${item.name}__$qtyKey';
+    // stable enough for session; later we’ll give items real IDs
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Group items by category
     final Map<CategoryDe, List<ShoppingListItem>> byCat = {};
-    for (final it in list.items) {
+    for (final it in widget.list.items) {
       (byCat[it.category] ??= <ShoppingListItem>[]).add(it);
     }
 
+    // Flatten headers + items
     final List<_Row> rows = <_Row>[];
     for (final cat in _categoryOrder) {
       final items = byCat[cat];
@@ -261,7 +276,18 @@ class ShoppingListScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shopping list (${_prettyNumber(targetServings)}p)'),
+        title: Text('Shopping list (${_prettyNumber(widget.targetServings)}p)'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear checked',
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() {
+                _checkedKeys.clear();
+              });
+            },
+          ),
+        ],
       ),
       body: ListView.builder(
         itemCount: rows.length,
@@ -281,9 +307,28 @@ class ShoppingListScreen extends StatelessWidget {
           }
 
           final item = r.item!;
-          return ListTile(
+          final key = _itemKey(item);
+          final checked = _checkedKeys.contains(key);
+
+          return CheckboxListTile(
             dense: true,
-            title: Text(_formatItem(item)),
+            controlAffinity: ListTileControlAffinity.leading,
+            value: checked,
+            title: Text(
+              _formatItem(item),
+              style: TextStyle(
+                decoration: checked ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            onChanged: (v) {
+              setState(() {
+                if (v == true) {
+                  _checkedKeys.add(key);
+                } else {
+                  _checkedKeys.remove(key);
+                }
+              });
+            },
           );
         },
       ),
@@ -298,9 +343,7 @@ class _Row {
 
   const _Row._({required this.isHeader, this.headerText, this.item});
 
-  factory _Row.header(String text) =>
-      _Row._(isHeader: true, headerText: text);
+  factory _Row.header(String text) => _Row._(isHeader: true, headerText: text);
 
-  factory _Row.item(ShoppingListItem item) =>
-      _Row._(isHeader: false, item: item);
+  factory _Row.item(ShoppingListItem item) => _Row._(isHeader: false, item: item);
 }
