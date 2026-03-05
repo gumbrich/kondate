@@ -28,10 +28,8 @@ class _KondateHomeState extends State<KondateHome> {
   bool _loading = false;
   String? _error;
 
-  // In-memory “week”
   final List<Recipe> _recipes = [];
 
-  // Household default
   final double _targetServings = 2.5;
 
   Future<void> _importAndAdd() async {
@@ -75,11 +73,16 @@ class _KondateHomeState extends State<KondateHome> {
       MaterialPageRoute(
         builder: (_) => ShoppingListScreen(
           targetServings: _targetServings,
-          recipes: _recipes,
           list: list,
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
   }
 
   @override
@@ -168,21 +171,67 @@ class _KondateHomeState extends State<KondateHome> {
 
 class ShoppingListScreen extends StatelessWidget {
   final double targetServings;
-  final List<Recipe> recipes;
   final ShoppingList list;
 
   const ShoppingListScreen({
     super.key,
     required this.targetServings,
-    required this.recipes,
     required this.list,
   });
 
-  String _formatQty(ShoppingListItem item) {
+  static const List<CategoryDe> _categoryOrder = <CategoryDe>[
+    CategoryDe.gemuese,
+    CategoryDe.obst,
+    CategoryDe.milchprodukte,
+    CategoryDe.fleischFisch,
+    CategoryDe.tiefkuehl,
+    CategoryDe.konserven,
+    CategoryDe.trockenwaren,
+    CategoryDe.backen,
+    CategoryDe.oeleSaucen,
+    CategoryDe.gewuerze,
+    CategoryDe.getraenke,
+    CategoryDe.sonstiges,
+  ];
+
+  String _categoryLabel(CategoryDe c) {
+    switch (c) {
+      case CategoryDe.gemuese:
+        return 'Gemüse';
+      case CategoryDe.obst:
+        return 'Obst';
+      case CategoryDe.milchprodukte:
+        return 'Milchprodukte';
+      case CategoryDe.fleischFisch:
+        return 'Fleisch / Fisch';
+      case CategoryDe.trockenwaren:
+        return 'Trockenwaren';
+      case CategoryDe.backen:
+        return 'Backen';
+      case CategoryDe.gewuerze:
+        return 'Gewürze';
+      case CategoryDe.oeleSaucen:
+        return 'Öle & Saucen';
+      case CategoryDe.konserven:
+        return 'Konserven';
+      case CategoryDe.tiefkuehl:
+        return 'Tiefkühl';
+      case CategoryDe.getraenke:
+        return 'Getränke';
+      case CategoryDe.sonstiges:
+        return 'Sonstiges';
+    }
+  }
+
+  String _prettyNumber(double x) {
+    final s = x.toStringAsFixed(2);
+    return s.replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  String _formatItem(ShoppingListItem item) {
     final q = item.quantity;
     if (q == null) return item.name;
 
-    // MVP formatting: use German unit short forms where we have them
     final unit = UnitFormatDe.short(q.unit);
     final value = _prettyNumber(q.value);
 
@@ -190,27 +239,68 @@ class ShoppingListScreen extends StatelessWidget {
     return '$value $unit ${item.name}';
   }
 
-  String _prettyNumber(double x) {
-    // Keep it simple for MVP: max 2 decimals, trim trailing zeros
-    final s = x.toStringAsFixed(2);
-    return s.replaceAll(RegExp(r'\.?0+$'), '');
-  }
-
   @override
   Widget build(BuildContext context) {
+    final Map<CategoryDe, List<ShoppingListItem>> byCat = {};
+    for (final it in list.items) {
+      (byCat[it.category] ??= <ShoppingListItem>[]).add(it);
+    }
+
+    final List<_Row> rows = <_Row>[];
+    for (final cat in _categoryOrder) {
+      final items = byCat[cat];
+      if (items == null || items.isEmpty) continue;
+
+      items.sort((a, b) => a.name.compareTo(b.name));
+
+      rows.add(_Row.header(_categoryLabel(cat)));
+      for (final it in items) {
+        rows.add(_Row.item(it));
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shopping list (${targetServings}p)'),
+        title: Text('Shopping list (${_prettyNumber(targetServings)}p)'),
       ),
       body: ListView.builder(
-        itemCount: list.items.length,
+        itemCount: rows.length,
         itemBuilder: (_, i) {
-          final item = list.items[i];
+          final r = rows[i];
+          if (r.isHeader) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                r.headerText!,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            );
+          }
+
+          final item = r.item!;
           return ListTile(
-            title: Text(_formatQty(item)),
+            dense: true,
+            title: Text(_formatItem(item)),
           );
         },
       ),
     );
   }
+}
+
+class _Row {
+  final bool isHeader;
+  final String? headerText;
+  final ShoppingListItem? item;
+
+  const _Row._({required this.isHeader, this.headerText, this.item});
+
+  factory _Row.header(String text) =>
+      _Row._(isHeader: true, headerText: text);
+
+  factory _Row.item(ShoppingListItem item) =>
+      _Row._(isHeader: false, item: item);
 }
