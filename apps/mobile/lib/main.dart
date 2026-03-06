@@ -29,7 +29,6 @@ class _KondateHomeState extends State<KondateHome> {
   String? _error;
 
   final List<Recipe> _recipes = [];
-
   final double _targetServings = 2.5;
 
   Future<void> _importAndAdd() async {
@@ -52,9 +51,9 @@ class _KondateHomeState extends State<KondateHome> {
         _recipes.add(recipe);
         _urlController.clear();
       });
-    } catch (e, st) {
+    } catch (e) {
       setState(() {
-        _error = '$e\n\n$st';
+        _error = e.toString();
       });
     } finally {
       setState(() {
@@ -77,12 +76,6 @@ class _KondateHomeState extends State<KondateHome> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    super.dispose();
   }
 
   @override
@@ -117,51 +110,27 @@ class _KondateHomeState extends State<KondateHome> {
             ),
             const SizedBox(height: 12),
             if (_loading) const LinearProgressIndicator(),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              ),
-            ] else ...[
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  'Added recipes (${_recipes.length})',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  _error!,
+                  style: const TextStyle(color: Colors.red),
                 ),
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _recipes.length,
-                  itemBuilder: (_, i) {
-                    final r = _recipes[i];
-                    return ListTile(
-                      title: Text(r.title),
-                      subtitle: Text(
-                        'Servings: ${r.defaultServings?.toString() ?? "?"} • ${r.sourceUrl}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () {
-                          setState(() {
-                            _recipes.removeAt(i);
-                          });
-                        },
-                      ),
-                    );
-                  },
-                ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _recipes.length,
+                itemBuilder: (_, i) {
+                  final r = _recipes[i];
+                  return ListTile(
+                    title: Text(r.title),
+                    subtitle: Text(r.sourceUrl.toString()),
+                  );
+                },
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -169,7 +138,7 @@ class _KondateHomeState extends State<KondateHome> {
   }
 }
 
-class ShoppingListScreen extends StatelessWidget {
+class ShoppingListScreen extends StatefulWidget {
   final double targetServings;
   final ShoppingList list;
 
@@ -179,128 +148,70 @@ class ShoppingListScreen extends StatelessWidget {
     required this.list,
   });
 
-  static const List<CategoryDe> _categoryOrder = <CategoryDe>[
-    CategoryDe.gemuese,
-    CategoryDe.obst,
-    CategoryDe.milchprodukte,
-    CategoryDe.fleischFisch,
-    CategoryDe.tiefkuehl,
-    CategoryDe.konserven,
-    CategoryDe.trockenwaren,
-    CategoryDe.backen,
-    CategoryDe.oeleSaucen,
-    CategoryDe.gewuerze,
-    CategoryDe.getraenke,
-    CategoryDe.sonstiges,
-  ];
+  @override
+  State<ShoppingListScreen> createState() => _ShoppingListScreenState();
+}
 
-  String _categoryLabel(CategoryDe c) {
-    switch (c) {
-      case CategoryDe.gemuese:
-        return 'Gemüse';
-      case CategoryDe.obst:
-        return 'Obst';
-      case CategoryDe.milchprodukte:
-        return 'Milchprodukte';
-      case CategoryDe.fleischFisch:
-        return 'Fleisch / Fisch';
-      case CategoryDe.trockenwaren:
-        return 'Trockenwaren';
-      case CategoryDe.backen:
-        return 'Backen';
-      case CategoryDe.gewuerze:
-        return 'Gewürze';
-      case CategoryDe.oeleSaucen:
-        return 'Öle & Saucen';
-      case CategoryDe.konserven:
-        return 'Konserven';
-      case CategoryDe.tiefkuehl:
-        return 'Tiefkühl';
-      case CategoryDe.getraenke:
-        return 'Getränke';
-      case CategoryDe.sonstiges:
-        return 'Sonstiges';
-    }
-  }
+class _ShoppingListScreenState extends State<ShoppingListScreen> {
+  final Set<String> _checked = {};
 
-  String _prettyNumber(double x) {
-    final s = x.toStringAsFixed(2);
-    return s.replaceAll(RegExp(r'\.?0+$'), '');
+  String _itemKey(ShoppingListItem item) {
+    final q = item.quantity;
+    if (q == null) return item.name;
+    return "${item.name}_${q.value}_${q.unit.name}";
   }
 
   String _formatItem(ShoppingListItem item) {
     final q = item.quantity;
-    if (q == null) return item.name;
+
+    if (q == null) {
+      return item.name;
+    }
 
     final unit = UnitFormatDe.short(q.unit);
-    final value = _prettyNumber(q.value);
+    final value = q.value.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
 
-    if (unit.isEmpty) return '$value ${item.name}';
-    return '$value $unit ${item.name}';
+    if (unit.isEmpty) {
+      return "$value ${item.name}";
+    }
+
+    return "$value $unit ${item.name}";
   }
 
   @override
   Widget build(BuildContext context) {
-    final Map<CategoryDe, List<ShoppingListItem>> byCat = {};
-    for (final it in list.items) {
-      (byCat[it.category] ??= <ShoppingListItem>[]).add(it);
-    }
-
-    final List<_Row> rows = <_Row>[];
-    for (final cat in _categoryOrder) {
-      final items = byCat[cat];
-      if (items == null || items.isEmpty) continue;
-
-      items.sort((a, b) => a.name.compareTo(b.name));
-
-      rows.add(_Row.header(_categoryLabel(cat)));
-      for (final it in items) {
-        rows.add(_Row.item(it));
-      }
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shopping list (${_prettyNumber(targetServings)}p)'),
+        title: Text("Shopping list (${widget.targetServings})"),
       ),
       body: ListView.builder(
-        itemCount: rows.length,
+        itemCount: widget.list.items.length,
         itemBuilder: (_, i) {
-          final r = rows[i];
-          if (r.isHeader) {
-            return Container(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                r.headerText!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            );
-          }
+          final item = widget.list.items[i];
+          final key = _itemKey(item);
 
-          final item = r.item!;
-          return ListTile(
-            dense: true,
-            title: Text(_formatItem(item)),
+          final checked = _checked.contains(key);
+
+          return CheckboxListTile(
+            value: checked,
+            title: Text(
+              _formatItem(item),
+              style: TextStyle(
+                decoration: checked ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            onChanged: (v) {
+              setState(() {
+                if (v == true) {
+                  _checked.add(key);
+                } else {
+                  _checked.remove(key);
+                }
+              });
+            },
           );
         },
       ),
     );
   }
-}
-
-class _Row {
-  final bool isHeader;
-  final String? headerText;
-  final ShoppingListItem? item;
-
-  const _Row._({required this.isHeader, this.headerText, this.item});
-
-  factory _Row.header(String text) =>
-      _Row._(isHeader: true, headerText: text);
-
-  factory _Row.item(ShoppingListItem item) =>
-      _Row._(isHeader: false, item: item);
 }
