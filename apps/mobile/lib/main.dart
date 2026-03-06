@@ -45,14 +45,14 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _loadState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    final savedServings = prefs.getDouble(_servingsPrefsKey);
+    final double? savedServings = prefs.getDouble(_servingsPrefsKey);
     if (savedServings != null && savedServings > 0) {
       _targetServings = savedServings;
     }
 
-    final raw = prefs.getString(_recipesPrefsKey);
+    final String? raw = prefs.getString(_recipesPrefsKey);
 
     if (raw == null || raw.isEmpty) {
       if (!mounted) return;
@@ -63,8 +63,8 @@ class _KondateHomeState extends State<KondateHome> {
     }
 
     try {
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      final loaded = decoded
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      final List<Recipe> loaded = decoded
           .whereType<Map<String, dynamic>>()
           .map(_recipeFromJson)
           .toList();
@@ -86,13 +86,13 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _saveRecipes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(_recipes.map(_recipeToJson).toList());
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String encoded = jsonEncode(_recipes.map(_recipeToJson).toList());
     await prefs.setString(_recipesPrefsKey, encoded);
   }
 
   Future<void> _saveServings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_servingsPrefsKey, _targetServings);
   }
 
@@ -113,7 +113,7 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _importAndAdd() async {
-    final urlText = _urlController.text.trim();
+    final String urlText = _urlController.text.trim();
     if (urlText.isEmpty) return;
 
     setState(() {
@@ -122,8 +122,8 @@ class _KondateHomeState extends State<KondateHome> {
     });
 
     try {
-      final importer = KondateRecipeImporter();
-      final recipe = await importer.importRecipe(
+      final KondateRecipeImporter importer = KondateRecipeImporter();
+      final Recipe recipe = await importer.importRecipe(
         url: Uri.parse(urlText),
         id: DateTime.now().millisecondsSinceEpoch.toString(),
       );
@@ -145,6 +145,23 @@ class _KondateHomeState extends State<KondateHome> {
     }
   }
 
+  Future<void> _openManualRecipeScreen() async {
+    final Recipe? recipe = await Navigator.of(context).push<Recipe>(
+      MaterialPageRoute(
+        builder: (_) => const ManualRecipeScreen(),
+      ),
+    );
+
+    if (recipe == null) return;
+
+    setState(() {
+      _recipes.add(recipe);
+      _error = null;
+    });
+
+    await _saveRecipes();
+  }
+
   Future<void> _removeRecipeAt(int index) async {
     setState(() {
       _recipes.removeAt(index);
@@ -160,7 +177,7 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   void _openShoppingList() {
-    final list = IngredientAggregator.fromRecipes(
+    final ShoppingList list = IngredientAggregator.fromRecipes(
       _recipes,
       targetServings: _targetServings,
     );
@@ -186,12 +203,15 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Recipe _recipeFromJson(Map<String, dynamic> json) {
-    final ingredientsRaw = json['ingredients'] as List<dynamic>? ?? <dynamic>[];
+    final List<dynamic> ingredientsRaw =
+        json['ingredients'] as List<dynamic>? ?? <dynamic>[];
 
     return Recipe(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
-      sourceUrl: Uri.parse(json['sourceUrl'] as String? ?? 'https://example.com'),
+      sourceUrl: Uri.parse(
+        json['sourceUrl'] as String? ?? 'https://example.com',
+      ),
       defaultServings: (json['defaultServings'] as num?)?.toDouble(),
       ingredients: ingredientsRaw
           .whereType<Map<String, dynamic>>()
@@ -214,7 +234,7 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   IngredientLine _ingredientLineFromJson(Map<String, dynamic> json) {
-    final q = json['quantity'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? q = json['quantity'] as Map<String, dynamic>?;
 
     return IngredientLine(
       raw: json['raw'] as String? ?? '',
@@ -230,7 +250,7 @@ class _KondateHomeState extends State<KondateHome> {
 
   Unit _unitFromName(String? name) {
     return Unit.values.firstWhere(
-      (u) => u.name == name,
+      (Unit u) => u.name == name,
       orElse: () => Unit.unknown,
     );
   }
@@ -274,13 +294,18 @@ class _KondateHomeState extends State<KondateHome> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
                     children: <Widget>[
                       ElevatedButton(
                         onPressed: _loading ? null : _importAndAdd,
                         child: const Text('Import & add'),
                       ),
-                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: _loading ? null : _openManualRecipeScreen,
+                        child: const Text('Manual recipe'),
+                      ),
                       ElevatedButton(
                         onPressed: canGenerate ? _openShoppingList : null,
                         child: const Text('Shopping list'),
@@ -355,6 +380,146 @@ class _KondateHomeState extends State<KondateHome> {
   }
 }
 
+class ManualRecipeScreen extends StatefulWidget {
+  const ManualRecipeScreen({super.key});
+
+  @override
+  State<ManualRecipeScreen> createState() => _ManualRecipeScreenState();
+}
+
+class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _servingsController =
+      TextEditingController(text: '2.5');
+  final TextEditingController _ingredientsController = TextEditingController();
+
+  String? _error;
+
+  Recipe _buildRecipe() {
+    final String title = _titleController.text.trim();
+    final String ingredientsText = _ingredientsController.text.trim();
+    final double? servings =
+        double.tryParse(_servingsController.text.trim().replaceAll(',', '.'));
+
+    if (title.isEmpty) {
+      throw Exception('Please enter a recipe title.');
+    }
+    if (ingredientsText.isEmpty) {
+      throw Exception('Please enter at least one ingredient line.');
+    }
+
+    final List<String> lines = ingredientsText
+        .split('\n')
+        .map((String s) => s.trim())
+        .where((String s) => s.isNotEmpty)
+        .toList();
+
+    final List<IngredientLine> ingredients = lines.map((String raw) {
+      final Quantity? q = QuantityParserDe.parseLeadingQuantity(raw);
+      return IngredientLine(
+        raw: raw,
+        quantity: q,
+        normalizedName: null,
+      );
+    }).toList();
+
+    return Recipe(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
+      sourceUrl: Uri.parse('manual://recipe/$title'),
+      defaultServings: servings,
+      ingredients: ingredients,
+    );
+  }
+
+  void _save() {
+    try {
+      final Recipe recipe = _buildRecipe();
+      Navigator.of(context).pop(recipe);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _servingsController.dispose();
+    _ingredientsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manual recipe'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Recipe title',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _servingsController,
+              decoration: const InputDecoration(
+                labelText: 'Recipe servings',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TextField(
+                controller: _ingredientsController,
+                decoration: const InputDecoration(
+                  labelText: 'Ingredients (one per line)',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: null,
+                expands: true,
+              ),
+            ),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    child: const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ShoppingListScreen extends StatefulWidget {
   final double targetServings;
   final ShoppingList list;
@@ -397,8 +562,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Future<void> _loadChecked() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList(_prefsKey) ?? <String>[];
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> saved = prefs.getStringList(_prefsKey) ?? <String>[];
 
     if (!mounted) return;
 
@@ -411,7 +576,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Future<void> _saveChecked() async {
-    final prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_prefsKey, _checked.toList());
   }
 
@@ -462,21 +627,27 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     return s.replaceAll(RegExp(r'\.?0+$'), '');
   }
 
+  String _capitalizeGermanNoun(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
+  }
+
   String _formatItem(ShoppingListItem item) {
     final Quantity? q = item.quantity;
+    final String displayName = _capitalizeGermanNoun(item.name);
 
     if (q == null) {
-      return item.name;
+      return displayName;
     }
 
     final String unit = UnitFormatDe.short(q.unit);
     final String value = _prettyNumber(q.value);
 
     if (unit.isEmpty) {
-      return '$value ${item.name}';
+      return '$value $displayName';
     }
 
-    return '$value $unit ${item.name}';
+    return '$value $unit $displayName';
   }
 
   @override
