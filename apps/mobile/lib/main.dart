@@ -27,6 +27,7 @@ class KondateHome extends StatefulWidget {
 
 class _KondateHomeState extends State<KondateHome> {
   static const String _recipesPrefsKey = 'saved_recipes_v1';
+  static const String _servingsPrefsKey = 'target_servings_v1';
 
   final TextEditingController _urlController = TextEditingController();
 
@@ -35,16 +36,22 @@ class _KondateHomeState extends State<KondateHome> {
   String? _error;
 
   final List<Recipe> _recipes = <Recipe>[];
-  final double _targetServings = 2.5;
+  double _targetServings = 2.5;
 
   @override
   void initState() {
     super.initState();
-    _loadRecipes();
+    _loadState();
   }
 
-  Future<void> _loadRecipes() async {
+  Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
+
+    final savedServings = prefs.getDouble(_servingsPrefsKey);
+    if (savedServings != null && savedServings > 0) {
+      _targetServings = savedServings;
+    }
+
     final raw = prefs.getString(_recipesPrefsKey);
 
     if (raw == null || raw.isEmpty) {
@@ -82,6 +89,27 @@ class _KondateHomeState extends State<KondateHome> {
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(_recipes.map(_recipeToJson).toList());
     await prefs.setString(_recipesPrefsKey, encoded);
+  }
+
+  Future<void> _saveServings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_servingsPrefsKey, _targetServings);
+  }
+
+  Future<void> _incrementServings() async {
+    setState(() {
+      _targetServings += 0.5;
+    });
+    await _saveServings();
+  }
+
+  Future<void> _decrementServings() async {
+    if (_targetServings <= 0.5) return;
+
+    setState(() {
+      _targetServings -= 0.5;
+    });
+    await _saveServings();
   }
 
   Future<void> _importAndAdd() async {
@@ -207,6 +235,11 @@ class _KondateHomeState extends State<KondateHome> {
     );
   }
 
+  String _prettyNumber(double x) {
+    final String s = x.toStringAsFixed(2);
+    return s.replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
   @override
   void dispose() {
     _urlController.dispose();
@@ -251,6 +284,28 @@ class _KondateHomeState extends State<KondateHome> {
                       ElevatedButton(
                         onPressed: canGenerate ? _openShoppingList : null,
                         child: const Text('Shopping list'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: <Widget>[
+                      const Text(
+                        'Household servings:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        onPressed: _decrementServings,
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      Text(
+                        _prettyNumber(_targetServings),
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      IconButton(
+                        onPressed: _incrementServings,
+                        icon: const Icon(Icons.add_circle_outline),
                       ),
                     ],
                   ),
@@ -449,7 +504,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shopping list (${widget.targetServings})'),
+        title: Text('Shopping list (${_prettyNumber(widget.targetServings)})'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Clear checked',
