@@ -28,15 +28,28 @@ class KondateHome extends StatefulWidget {
 class _KondateHomeState extends State<KondateHome> {
   static const String _recipesPrefsKey = 'saved_recipes_v1';
   static const String _servingsPrefsKey = 'target_servings_v1';
+  static const String _mealPlanPrefsKey = 'meal_plan_v1';
 
   final TextEditingController _urlController = TextEditingController();
 
   bool _loading = false;
-  bool _recipesLoaded = false;
+  bool _dataLoaded = false;
   String? _error;
 
   final List<Recipe> _recipes = <Recipe>[];
   double _targetServings = 2.5;
+
+  MealPlanWeek _mealPlan = MealPlanWeek(
+    entries: const <MealPlanEntry>[
+      MealPlanEntry(weekday: WeekdayDe.montag),
+      MealPlanEntry(weekday: WeekdayDe.dienstag),
+      MealPlanEntry(weekday: WeekdayDe.mittwoch),
+      MealPlanEntry(weekday: WeekdayDe.donnerstag),
+      MealPlanEntry(weekday: WeekdayDe.freitag),
+      MealPlanEntry(weekday: WeekdayDe.samstag),
+      MealPlanEntry(weekday: WeekdayDe.sonntag),
+    ],
+  );
 
   @override
   void initState() {
@@ -52,37 +65,42 @@ class _KondateHomeState extends State<KondateHome> {
       _targetServings = savedServings;
     }
 
-    final String? raw = prefs.getString(_recipesPrefsKey);
+    final String? recipesRaw = prefs.getString(_recipesPrefsKey);
+    if (recipesRaw != null && recipesRaw.isNotEmpty) {
+      try {
+        final List<dynamic> decoded = jsonDecode(recipesRaw) as List<dynamic>;
+        final List<Recipe> loaded = decoded
+            .whereType<Map<String, dynamic>>()
+            .map(_recipeFromJson)
+            .toList();
 
-    if (raw == null || raw.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _recipesLoaded = true;
-      });
-      return;
-    }
-
-    try {
-      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
-      final List<Recipe> loaded = decoded
-          .whereType<Map<String, dynamic>>()
-          .map(_recipeFromJson)
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
         _recipes
           ..clear()
           ..addAll(loaded);
-        _recipesLoaded = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _recipesLoaded = true;
+      } catch (_) {
         _error = 'Could not restore saved recipes.';
-      });
+      }
     }
+
+    final String? mealPlanRaw = prefs.getString(_mealPlanPrefsKey);
+    if (mealPlanRaw != null && mealPlanRaw.isNotEmpty) {
+      try {
+        final List<dynamic> decoded = jsonDecode(mealPlanRaw) as List<dynamic>;
+        final List<MealPlanEntry> entries = decoded
+            .whereType<Map<String, dynamic>>()
+            .map(_mealPlanEntryFromJson)
+            .toList();
+
+        _mealPlan = MealPlanWeek(entries: entries);
+      } catch (_) {
+        _error = 'Could not restore meal plan.';
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _dataLoaded = true;
+    });
   }
 
   Future<void> _saveRecipes() async {
@@ -94,6 +112,13 @@ class _KondateHomeState extends State<KondateHome> {
   Future<void> _saveServings() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_servingsPrefsKey, _targetServings);
+  }
+
+  Future<void> _saveMealPlan() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String encoded =
+        jsonEncode(_mealPlan.entries.map(_mealPlanEntryToJson).toList());
+    await prefs.setString(_mealPlanPrefsKey, encoded);
   }
 
   Future<void> _incrementServings() async {
@@ -176,9 +201,67 @@ class _KondateHomeState extends State<KondateHome> {
     await _saveRecipes();
   }
 
+  Future<void> _assignRecipeToWeekday(WeekdayDe weekday) async {
+    if (_recipes.isEmpty) {
+      setState(() {
+        _error = 'Please import or add a recipe first.';
+      });
+      return;
+    }
+
+    final String? recipeId = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) {
+        return SafeArea(
+          child: ListView(
+            children: _recipes.map((Recipe recipe) {
+              return ListTile(
+                title: Text(recipe.title),
+                subtitle: Text(
+                  recipe.sourceUrl.toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.of(context).pop(recipe.id),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+
+    if (recipeId == null) return;
+
+    final MealPlanEntry current =
+        _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
+
+    setState(() {
+      _mealPlan = _mealPlan.upsert(
+        current.copyWith(recipeId: recipeId),
+      );
+    });
+
+    await _saveMealPlan();
+  }
+
+  Future<void> _clearWeekday(WeekdayDe weekday) async {
+    final MealPlanEntry current =
+        _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
+
+    setState(() {
+      _mealPlan = _mealPlan.upsert(
+        current.copyWith(recipeId: null),
+      );
+    });
+
+    await _saveMealPlan();
+  }
+
   void _openShoppingList() {
+    final List<Recipe> selectedRecipes = _selectedMealPlanRecipes();
+
     final ShoppingList list = IngredientAggregator.fromRecipes(
-      _recipes,
+      selectedRecipes,
       targetServings: _targetServings,
     );
 
@@ -190,6 +273,48 @@ class _KondateHomeState extends State<KondateHome> {
         ),
       ),
     );
+  }
+
+  List<Recipe> _selectedMealPlanRecipes() {
+    final List<Recipe> result = <Recipe>[];
+
+    for (final MealPlanEntry entry in _mealPlan.entries) {
+      final String? recipeId = entry.recipeId;
+      if (recipeId == null) continue;
+
+      final Recipe? recipe = _findRecipeById(recipeId);
+      if (recipe != null) {
+        result.add(recipe);
+      }
+    }
+
+    return result;
+  }
+
+  Recipe? _findRecipeById(String id) {
+    for (final Recipe recipe in _recipes) {
+      if (recipe.id == id) return recipe;
+    }
+    return null;
+  }
+
+  String _weekdayLabel(WeekdayDe weekday) {
+    switch (weekday) {
+      case WeekdayDe.montag:
+        return 'Montag';
+      case WeekdayDe.dienstag:
+        return 'Dienstag';
+      case WeekdayDe.mittwoch:
+        return 'Mittwoch';
+      case WeekdayDe.donnerstag:
+        return 'Donnerstag';
+      case WeekdayDe.freitag:
+        return 'Freitag';
+      case WeekdayDe.samstag:
+        return 'Samstag';
+      case WeekdayDe.sonntag:
+        return 'Sonntag';
+    }
   }
 
   Map<String, dynamic> _recipeToJson(Recipe recipe) {
@@ -248,6 +373,25 @@ class _KondateHomeState extends State<KondateHome> {
     );
   }
 
+  Map<String, dynamic> _mealPlanEntryToJson(MealPlanEntry entry) {
+    return <String, dynamic>{
+      'weekday': entry.weekday.name,
+      'dishIdea': entry.dishIdea,
+      'recipeId': entry.recipeId,
+    };
+  }
+
+  MealPlanEntry _mealPlanEntryFromJson(Map<String, dynamic> json) {
+    return MealPlanEntry(
+      weekday: WeekdayDe.values.firstWhere(
+        (WeekdayDe d) => d.name == json['weekday'],
+        orElse: () => WeekdayDe.montag,
+      ),
+      dishIdea: json['dishIdea'] as String?,
+      recipeId: json['recipeId'] as String?,
+    );
+  }
+
   Unit _unitFromName(String? name) {
     return Unit.values.firstWhere(
       (Unit u) => u.name == name,
@@ -268,7 +412,8 @@ class _KondateHomeState extends State<KondateHome> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canGenerate = _recipes.isNotEmpty && !_loading;
+    final bool canGenerate =
+        _selectedMealPlanRecipes().isNotEmpty && !_loading;
 
     return Scaffold(
       appBar: AppBar(
@@ -281,7 +426,7 @@ class _KondateHomeState extends State<KondateHome> {
           ),
         ],
       ),
-      body: !_recipesLoaded
+      body: !_dataLoaded
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(16),
@@ -348,12 +493,54 @@ class _KondateHomeState extends State<KondateHome> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
+                      'Weekly plan',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView(
+                      children: WeekdayDe.values.map((WeekdayDe weekday) {
+                        final MealPlanEntry entry =
+                            _mealPlan.entryFor(weekday) ??
+                                MealPlanEntry(weekday: weekday);
+
+                        final Recipe? recipe = entry.recipeId == null
+                            ? null
+                            : _findRecipeById(entry.recipeId!);
+
+                        return Card(
+                          child: ListTile(
+                            title: Text(_weekdayLabel(weekday)),
+                            subtitle: Text(
+                              recipe?.title ?? 'No recipe selected',
+                            ),
+                            onTap: () => _assignRecipeToWeekday(weekday),
+                            trailing: recipe == null
+                                ? const Icon(Icons.add)
+                                : IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () => _clearWeekday(weekday),
+                                  ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
                       'Saved recipes (${_recipes.length})',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Expanded(
+                  SizedBox(
+                    height: 180,
                     child: ListView.builder(
                       itemCount: _recipes.length,
                       itemBuilder: (_, int i) {

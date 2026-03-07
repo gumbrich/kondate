@@ -1,5 +1,6 @@
 // Models
 export 'models/ingredient_line.dart';
+export 'models/meal_plan.dart';
 export 'models/recipe.dart';
 
 // Units
