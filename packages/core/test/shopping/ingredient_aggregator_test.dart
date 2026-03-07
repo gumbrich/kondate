@@ -43,20 +43,23 @@ void main() {
     );
 
     final ShoppingListItem oil =
-        list.items.firstWhere((ShoppingListItem i) => i.name.contains('olivenöl'));
+        list.items.firstWhere((ShoppingListItem i) => i.name == 'olivenöl');
     expect(oil.quantity, isNotNull);
     expect(oil.quantity!.dimension, UnitDimension.volume);
     expect(oil.quantity!.toBaseValue(), closeTo(32.8125, 1e-9));
+    expect(oil.displayName, 'Olivenöl');
 
     final ShoppingListItem tom =
-        list.items.firstWhere((ShoppingListItem i) => i.name.contains('tomate'));
+        list.items.firstWhere((ShoppingListItem i) => i.name == 'tomate');
     expect(tom.quantity, isNotNull);
     expect(tom.quantity!.dimension, UnitDimension.count);
     expect(tom.quantity!.toBaseValue(), closeTo(1.25, 1e-9));
+    expect(tom.displayName, 'Tomate');
 
     final ShoppingListItem salt =
         list.items.firstWhere((ShoppingListItem i) => i.name.contains('salz'));
     expect(salt.quantity, isNull);
+    expect(salt.displayName, 'Salz nach geschmack');
   });
 
   test('merges plural and singular ingredient names', () {
@@ -88,5 +91,6 @@ void main() {
     expect(onion.quantity, isNotNull);
     expect(onion.quantity!.dimension, UnitDimension.count);
     expect(onion.quantity!.toBaseValue(), closeTo(3, 1e-9));
+    expect(onion.displayName, 'Zwiebel');
   });
 }

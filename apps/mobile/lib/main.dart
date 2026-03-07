@@ -814,14 +814,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     return s.replaceAll(RegExp(r'\.?0+$'), '');
   }
 
-  String _capitalizeGermanNoun(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
-  }
-
   String _formatItem(ShoppingListItem item) {
     final Quantity? q = item.quantity;
-    final String displayName = _capitalizeGermanNoun(item.name);
+    final String displayName = item.displayName;
 
     if (q == null) {
       return displayName;
@@ -851,7 +846,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (items == null || items.isEmpty) continue;
 
       items.sort((ShoppingListItem a, ShoppingListItem b) {
-        return a.name.compareTo(b.name);
+        return a.displayName.compareTo(b.displayName);
       });
 
       rows.add(_Row.header(_categoryLabel(cat)));
