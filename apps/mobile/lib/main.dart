@@ -201,44 +201,31 @@ class _KondateHomeState extends State<KondateHome> {
     await _saveRecipes();
   }
 
-  Future<void> _assignRecipeToWeekday(WeekdayDe weekday) async {
-    if (_recipes.isEmpty) {
-      setState(() {
-        _error = 'Please import or add a recipe first.';
-      });
-      return;
-    }
-
-    final String? recipeId = await showModalBottomSheet<String>(
-      context: context,
-      builder: (_) {
-        return SafeArea(
-          child: ListView(
-            children: _recipes.map((Recipe recipe) {
-              return ListTile(
-                title: Text(recipe.title),
-                subtitle: Text(
-                  recipe.sourceUrl.toString(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => Navigator.of(context).pop(recipe.id),
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-
-    if (recipeId == null) return;
-
+  Future<void> _editWeekday(WeekdayDe weekday) async {
     final MealPlanEntry current =
         _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
 
+    final _MealPlanEditResult? result = await showModalBottomSheet<_MealPlanEditResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _MealPlanEditSheet(
+        weekdayLabel: _weekdayLabel(weekday),
+        currentDishIdea: current.dishIdea ?? '',
+        currentRecipeId: current.recipeId,
+        recipes: _recipes,
+      ),
+    );
+
+    if (result == null) return;
+
     setState(() {
       _mealPlan = _mealPlan.upsert(
-        current.copyWith(recipeId: recipeId),
+        current.copyWith(
+          dishIdea: result.dishIdea,
+          recipeId: result.recipeId,
+        ),
       );
+      _error = null;
     });
 
     await _saveMealPlan();
@@ -250,7 +237,10 @@ class _KondateHomeState extends State<KondateHome> {
 
     setState(() {
       _mealPlan = _mealPlan.upsert(
-        current.copyWith(recipeId: null),
+        current.copyWith(
+          dishIdea: '',
+          recipeId: null,
+        ),
       );
     });
 
@@ -315,6 +305,27 @@ class _KondateHomeState extends State<KondateHome> {
       case WeekdayDe.sonntag:
         return 'Sonntag';
     }
+  }
+
+  String _mealPlanSubtitle(MealPlanEntry entry) {
+    final Recipe? recipe =
+        entry.recipeId == null ? null : _findRecipeById(entry.recipeId!);
+
+    if (entry.dishIdea != null &&
+        entry.dishIdea!.trim().isNotEmpty &&
+        recipe != null) {
+      return '${entry.dishIdea!.trim()} • ${recipe.title}';
+    }
+
+    if (entry.dishIdea != null && entry.dishIdea!.trim().isNotEmpty) {
+      return entry.dishIdea!.trim();
+    }
+
+    if (recipe != null) {
+      return recipe.title;
+    }
+
+    return 'No plan yet';
   }
 
   Map<String, dynamic> _recipeToJson(Recipe recipe) {
@@ -508,23 +519,21 @@ class _KondateHomeState extends State<KondateHome> {
                             _mealPlan.entryFor(weekday) ??
                                 MealPlanEntry(weekday: weekday);
 
-                        final Recipe? recipe = entry.recipeId == null
-                            ? null
-                            : _findRecipeById(entry.recipeId!);
+                        final bool hasAnything =
+                            (entry.dishIdea?.trim().isNotEmpty ?? false) ||
+                                entry.recipeId != null;
 
                         return Card(
                           child: ListTile(
                             title: Text(_weekdayLabel(weekday)),
-                            subtitle: Text(
-                              recipe?.title ?? 'No recipe selected',
-                            ),
-                            onTap: () => _assignRecipeToWeekday(weekday),
-                            trailing: recipe == null
-                                ? const Icon(Icons.add)
-                                : IconButton(
+                            subtitle: Text(_mealPlanSubtitle(entry)),
+                            onTap: () => _editWeekday(weekday),
+                            trailing: hasAnything
+                                ? IconButton(
                                     icon: const Icon(Icons.clear),
                                     onPressed: () => _clearWeekday(weekday),
-                                  ),
+                                  )
+                                : const Icon(Icons.edit),
                           ),
                         );
                       }).toList(),
@@ -563,6 +572,131 @@ class _KondateHomeState extends State<KondateHome> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _MealPlanEditResult {
+  final String dishIdea;
+  final String? recipeId;
+
+  const _MealPlanEditResult({
+    required this.dishIdea,
+    required this.recipeId,
+  });
+}
+
+class _MealPlanEditSheet extends StatefulWidget {
+  final String weekdayLabel;
+  final String currentDishIdea;
+  final String? currentRecipeId;
+  final List<Recipe> recipes;
+
+  const _MealPlanEditSheet({
+    required this.weekdayLabel,
+    required this.currentDishIdea,
+    required this.currentRecipeId,
+    required this.recipes,
+  });
+
+  @override
+  State<_MealPlanEditSheet> createState() => _MealPlanEditSheetState();
+}
+
+class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
+  late final TextEditingController _dishIdeaController;
+  String? _selectedRecipeId;
+
+  @override
+  void initState() {
+    super.initState();
+    _dishIdeaController = TextEditingController(text: widget.currentDishIdea);
+    _selectedRecipeId = widget.currentRecipeId;
+  }
+
+  @override
+  void dispose() {
+    _dishIdeaController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              widget.weekdayLabel,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _dishIdeaController,
+              decoration: const InputDecoration(
+                labelText: 'Dish idea',
+                hintText: 'e.g. Lasagne, Ramen, Curry',
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              initialValue: _selectedRecipeId,
+              decoration: const InputDecoration(
+                labelText: 'Recipe',
+              ),
+              items: <DropdownMenuItem<String?>>[
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('No recipe selected'),
+                ),
+                ...widget.recipes.map((Recipe recipe) {
+                  return DropdownMenuItem<String?>(
+                    value: recipe.id,
+                    child: Text(recipe.title),
+                  );
+                }),
+              ],
+              onChanged: (String? value) {
+                setState(() {
+                  _selectedRecipeId = value;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(
+                        _MealPlanEditResult(
+                          dishIdea: _dishIdeaController.text.trim(),
+                          recipeId: _selectedRecipeId,
+                        ),
+                      );
+                    },
+                    child: const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
