@@ -6,6 +6,8 @@ import 'package:recipe_parser/recipe_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'recipe_search_provider.dart';
+
 void main() {
   runApp(const KondateApp());
 }
@@ -31,6 +33,7 @@ class _KondateHomeState extends State<KondateHome> {
   static const String _servingsPrefsKey = 'target_servings_v1';
   static const String _mealPlanPrefsKey = 'meal_plan_v1';
   static const String _trustedSitesPrefsKey = 'trusted_sites_v1';
+  static const String _topNPrefsKey = 'recipe_top_n_v1';
 
   static const List<String> _defaultTrustedSites = <String>[
     'chefkoch.de',
@@ -46,6 +49,7 @@ class _KondateHomeState extends State<KondateHome> {
 
   final List<Recipe> _recipes = <Recipe>[];
   double _targetServings = 2.5;
+  int _topN = 3;
   List<String> _trustedSites = List<String>.from(_defaultTrustedSites);
 
   MealPlanWeek _mealPlan = MealPlanWeek(
@@ -72,6 +76,11 @@ class _KondateHomeState extends State<KondateHome> {
     final double? savedServings = prefs.getDouble(_servingsPrefsKey);
     if (savedServings != null && savedServings > 0) {
       _targetServings = savedServings;
+    }
+
+    final int? savedTopN = prefs.getInt(_topNPrefsKey);
+    if (savedTopN != null && savedTopN > 0) {
+      _topN = savedTopN;
     }
 
     final List<String>? savedSites = prefs.getStringList(_trustedSitesPrefsKey);
@@ -128,6 +137,11 @@ class _KondateHomeState extends State<KondateHome> {
     await prefs.setDouble(_servingsPrefsKey, _targetServings);
   }
 
+  Future<void> _saveTopN() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_topNPrefsKey, _topN);
+  }
+
   Future<void> _saveMealPlan() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String encoded =
@@ -154,6 +168,22 @@ class _KondateHomeState extends State<KondateHome> {
       _targetServings -= 0.5;
     });
     await _saveServings();
+  }
+
+  Future<void> _incrementTopN() async {
+    setState(() {
+      _topN += 1;
+    });
+    await _saveTopN();
+  }
+
+  Future<void> _decrementTopN() async {
+    if (_topN <= 1) return;
+
+    setState(() {
+      _topN -= 1;
+    });
+    await _saveTopN();
   }
 
   Future<void> _importAndAdd() async {
@@ -207,21 +237,25 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _openTrustedSitesScreen() async {
-    final List<String>? sites = await Navigator.of(context).push<List<String>>(
+    final _TrustedSitesResult? result =
+        await Navigator.of(context).push<_TrustedSitesResult>(
       MaterialPageRoute(
         builder: (_) => TrustedSitesScreen(
           initialSites: _trustedSites,
+          initialTopN: _topN,
         ),
       ),
     );
 
-    if (sites == null) return;
+    if (result == null) return;
 
     setState(() {
-      _trustedSites = sites;
+      _trustedSites = result.sites;
+      _topN = result.topN;
     });
 
     await _saveTrustedSites();
+    await _saveTopN();
   }
 
   Future<void> _removeRecipeAt(int index) async {
@@ -251,6 +285,7 @@ class _KondateHomeState extends State<KondateHome> {
           currentRecipeId: current.recipeId,
           recipes: _recipes,
           trustedSites: _trustedSites,
+          topN: _topN,
         ),
       ),
     );
@@ -544,6 +579,28 @@ class _KondateHomeState extends State<KondateHome> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      const Text(
+                        'Recipe suggestions:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        onPressed: _decrementTopN,
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      Text(
+                        'Top $_topN',
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      IconButton(
+                        onPressed: _incrementTopN,
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   if (_loading) const LinearProgressIndicator(),
                   if (_error != null)
@@ -642,12 +699,23 @@ class _MealPlanEditResult {
   });
 }
 
+class _TrustedSitesResult {
+  final List<String> sites;
+  final int topN;
+
+  const _TrustedSitesResult({
+    required this.sites,
+    required this.topN,
+  });
+}
+
 class MealPlanDayScreen extends StatefulWidget {
   final String weekdayLabel;
   final String currentDishIdea;
   final String? currentRecipeId;
   final List<Recipe> recipes;
   final List<String> trustedSites;
+  final int topN;
 
   const MealPlanDayScreen({
     super.key,
@@ -656,6 +724,7 @@ class MealPlanDayScreen extends StatefulWidget {
     required this.currentRecipeId,
     required this.recipes,
     required this.trustedSites,
+    required this.topN,
   });
 
   @override
@@ -690,6 +759,7 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
         builder: (_) => RecipeSuggestionScreen(
           dishIdea: dishIdea,
           trustedSites: widget.trustedSites,
+          topN: widget.topN,
         ),
       ),
     );
@@ -770,7 +840,7 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
               alignment: Alignment.centerLeft,
               child: ElevatedButton(
                 onPressed: _openRecipeSuggestionScreen,
-                child: const Text('Find recipe suggestions'),
+                child: Text('Find top ${widget.topN} suggestions'),
               ),
             ),
             if (_error != null) ...<Widget>[
@@ -807,10 +877,12 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
 
 class TrustedSitesScreen extends StatefulWidget {
   final List<String> initialSites;
+  final int initialTopN;
 
   const TrustedSitesScreen({
     super.key,
     required this.initialSites,
+    required this.initialTopN,
   });
 
   @override
@@ -820,6 +892,7 @@ class TrustedSitesScreen extends StatefulWidget {
 class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
   late final TextEditingController _newSiteController;
   late List<String> _sites;
+  late int _topN;
   String? _error;
 
   @override
@@ -827,6 +900,7 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
     super.initState();
     _newSiteController = TextEditingController();
     _sites = List<String>.from(widget.initialSites);
+    _topN = widget.initialTopN;
   }
 
   void _addSite() {
@@ -863,6 +937,26 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
   void _removeSite(String site) {
     setState(() {
       _sites.remove(site);
+      if (_topN > _sites.length && _sites.isNotEmpty) {
+        _topN = _sites.length;
+      }
+      if (_sites.isEmpty) {
+        _topN = 1;
+      }
+    });
+  }
+
+  void _incrementTopN() {
+    if (_topN >= _sites.length) return;
+    setState(() {
+      _topN += 1;
+    });
+  }
+
+  void _decrementTopN() {
+    if (_topN <= 1) return;
+    setState(() {
+      _topN -= 1;
     });
   }
 
@@ -874,6 +968,11 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final int maxUsableTopN = _sites.isEmpty ? 1 : _sites.length;
+    if (_topN > maxUsableTopN) {
+      _topN = maxUsableTopN;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trusted sites'),
@@ -896,6 +995,28 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
                 onPressed: _addSite,
                 child: const Text('Add site'),
               ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                const Text(
+                  'Top suggestions:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  onPressed: _decrementTopN,
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+                Text(
+                  '$_topN',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                IconButton(
+                  onPressed: _incrementTopN,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
             ),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 12),
@@ -931,7 +1052,14 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(_sites),
+                    onPressed: () {
+                      Navigator.of(context).pop(
+                        _TrustedSitesResult(
+                          sites: _sites,
+                          topN: _topN,
+                        ),
+                      );
+                    },
                     child: const Text('Save'),
                   ),
                 ),
@@ -944,79 +1072,16 @@ class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
   }
 }
 
-class _TrustedSearchSite {
-  final String domain;
-
-  const _TrustedSearchSite({
-    required this.domain,
-  });
-
-  Uri searchUri(String dishIdea) {
-    return Uri.https(
-      'www.google.com',
-      '/search',
-      <String, String>{
-        'q': 'site:$domain $dishIdea rezept',
-      },
-    );
-  }
-}
-
-class RecipeSuggestionCandidate {
-  final String title;
-  final String subtitle;
-  final String domain;
-  final Uri searchUri;
-
-  const RecipeSuggestionCandidate({
-    required this.title,
-    required this.subtitle,
-    required this.domain,
-    required this.searchUri,
-  });
-}
-
-class RecipeSuggestionProvider {
-  const RecipeSuggestionProvider();
-
-  List<RecipeSuggestionCandidate> buildCandidates({
-    required String dishIdea,
-    required List<String> trustedSites,
-    required int topN,
-  }) {
-    final List<RecipeSuggestionCandidate> candidates =
-        <RecipeSuggestionCandidate>[];
-
-    for (final String domain in trustedSites.take(topN)) {
-      final _TrustedSearchSite site = _TrustedSearchSite(domain: domain);
-
-      candidates.add(
-        RecipeSuggestionCandidate(
-          title: '${_titleCaseDishIdea(dishIdea)} auf $domain',
-          subtitle: 'Öffne Suchergebnisse und wähle dann dein Rezept',
-          domain: domain,
-          searchUri: site.searchUri(dishIdea),
-        ),
-      );
-    }
-
-    return candidates;
-  }
-
-  String _titleCaseDishIdea(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
-  }
-}
-
 class RecipeSuggestionScreen extends StatefulWidget {
   final String dishIdea;
   final List<String> trustedSites;
+  final int topN;
 
   const RecipeSuggestionScreen({
     super.key,
     required this.dishIdea,
     required this.trustedSites,
+    required this.topN,
   });
 
   @override
@@ -1025,7 +1090,7 @@ class RecipeSuggestionScreen extends StatefulWidget {
 
 class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   final TextEditingController _chosenUrlController = TextEditingController();
-  final RecipeSuggestionProvider _provider = const RecipeSuggestionProvider();
+  final RecipeSearchProvider _provider = const MockRecipeSearchProvider();
 
   bool _importing = false;
   String? _error;
@@ -1081,71 +1146,80 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<RecipeSuggestionCandidate> candidates = _provider.buildCandidates(
-      dishIdea: widget.dishIdea,
-      trustedSites: widget.trustedSites,
-      topN: 3,
-    );
+    return FutureBuilder<List<RecipeSuggestionCandidate>>(
+      future: _provider.search(
+        dishIdea: widget.dishIdea,
+        trustedSites: widget.trustedSites,
+        topN: widget.topN,
+      ),
+      builder: (BuildContext context,
+          AsyncSnapshot<List<RecipeSuggestionCandidate>> snapshot) {
+        final bool loading = snapshot.connectionState != ConnectionState.done;
+        final List<RecipeSuggestionCandidate> candidates =
+            snapshot.data ?? const <RecipeSuggestionCandidate>[];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Suggestions: ${widget.dishIdea}'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: <Widget>[
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Recipe candidates',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (candidates.isEmpty)
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('No trusted sites configured yet.'),
-              ),
-            ...candidates.map((RecipeSuggestionCandidate candidate) {
-              return Card(
-                child: ListTile(
-                  title: Text(candidate.title),
-                  subtitle: Text(candidate.subtitle),
-                  trailing: const Icon(Icons.open_in_new),
-                  onTap: () => _openCandidate(candidate),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Suggestions: ${widget.dishIdea}'),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: <Widget>[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Recipe candidates',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-              );
-            }),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _chosenUrlController,
-              decoration: const InputDecoration(
-                labelText: 'Chosen recipe URL',
-                hintText: 'Paste the final recipe URL here',
-              ),
+                const SizedBox(height: 8),
+                if (loading) const LinearProgressIndicator(),
+                if (!loading && candidates.isEmpty)
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('No trusted sites configured yet.'),
+                  ),
+                ...candidates.map((RecipeSuggestionCandidate candidate) {
+                  return Card(
+                    child: ListTile(
+                      title: Text(candidate.title),
+                      subtitle: Text(candidate.subtitle),
+                      trailing: const Icon(Icons.open_in_new),
+                      onTap: () => _openCandidate(candidate),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _chosenUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Chosen recipe URL',
+                    hintText: 'Paste the final recipe URL here',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_importing) const LinearProgressIndicator(),
+                if (_error != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ElevatedButton(
+                    onPressed: _importing ? null : _importChosenRecipe,
+                    child: const Text('Import selected recipe'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            if (_importing) const LinearProgressIndicator(),
-            if (_error != null) ...<Widget>[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ElevatedButton(
-                onPressed: _importing ? null : _importChosenRecipe,
-                child: const Text('Import selected recipe'),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
