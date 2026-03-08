@@ -962,53 +962,6 @@ class _TrustedSearchSite {
   }
 }
 
-class RecipeSuggestionCandidate {
-  final String title;
-  final String subtitle;
-  final String domain;
-  final Uri searchUri;
-
-  const RecipeSuggestionCandidate({
-    required this.title,
-    required this.subtitle,
-    required this.domain,
-    required this.searchUri,
-  });
-}
-
-class RecipeSuggestionProvider {
-  const RecipeSuggestionProvider();
-
-  List<RecipeSuggestionCandidate> buildCandidates({
-    required String dishIdea,
-    required List<String> trustedSites,
-    required int topN,
-  }) {
-    final List<RecipeSuggestionCandidate> candidates =
-        <RecipeSuggestionCandidate>[];
-
-    for (final String domain in trustedSites.take(topN)) {
-      final _TrustedSearchSite site = _TrustedSearchSite(domain: domain);
-
-      candidates.add(
-        RecipeSuggestionCandidate(
-          title: '${_titleCaseDishIdea(dishIdea)} auf $domain',
-          subtitle: 'Öffne Suchergebnisse und wähle dann dein Rezept',
-          domain: domain,
-          searchUri: site.searchUri(dishIdea),
-        ),
-      );
-    }
-
-    return candidates;
-  }
-
-  String _titleCaseDishIdea(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
-  }
-}
-
 class RecipeSuggestionScreen extends StatefulWidget {
   final String dishIdea;
   final List<String> trustedSites;
@@ -1025,16 +978,12 @@ class RecipeSuggestionScreen extends StatefulWidget {
 
 class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   final TextEditingController _chosenUrlController = TextEditingController();
-  final RecipeSuggestionProvider _provider = const RecipeSuggestionProvider();
-
   bool _importing = false;
   String? _error;
 
-  Future<void> _openCandidate(RecipeSuggestionCandidate candidate) async {
-    await launchUrl(
-      candidate.searchUri,
-      mode: LaunchMode.externalApplication,
-    );
+  Future<void> _openSiteSearch(_TrustedSearchSite site) async {
+    final Uri uri = site.searchUri(widget.dishIdea);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _importChosenRecipe() async {
@@ -1081,11 +1030,10 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<RecipeSuggestionCandidate> candidates = _provider.buildCandidates(
-      dishIdea: widget.dishIdea,
-      trustedSites: widget.trustedSites,
-      topN: 3,
-    );
+    final List<_TrustedSearchSite> sites = widget.trustedSites
+        .take(3)
+        .map((String domain) => _TrustedSearchSite(domain: domain))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -1098,23 +1046,23 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Recipe candidates',
+                'Trusted site suggestions',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 8),
-            if (candidates.isEmpty)
+            if (sites.isEmpty)
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text('No trusted sites configured yet.'),
               ),
-            ...candidates.map((RecipeSuggestionCandidate candidate) {
+            ...sites.map((site) {
               return Card(
                 child: ListTile(
-                  title: Text(candidate.title),
-                  subtitle: Text(candidate.subtitle),
+                  title: Text(site.domain),
+                  subtitle: const Text('Open search results in browser'),
                   trailing: const Icon(Icons.open_in_new),
-                  onTap: () => _openCandidate(candidate),
+                  onTap: () => _openSiteSearch(site),
                 ),
               );
             }),
