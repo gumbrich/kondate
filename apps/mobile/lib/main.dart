@@ -30,6 +30,13 @@ class _KondateHomeState extends State<KondateHome> {
   static const String _recipesPrefsKey = 'saved_recipes_v1';
   static const String _servingsPrefsKey = 'target_servings_v1';
   static const String _mealPlanPrefsKey = 'meal_plan_v1';
+  static const String _trustedSitesPrefsKey = 'trusted_sites_v1';
+
+  static const List<String> _defaultTrustedSites = <String>[
+    'chefkoch.de',
+    'eatsmarter.de',
+    'springlane.de',
+  ];
 
   final TextEditingController _urlController = TextEditingController();
 
@@ -39,6 +46,7 @@ class _KondateHomeState extends State<KondateHome> {
 
   final List<Recipe> _recipes = <Recipe>[];
   double _targetServings = 2.5;
+  List<String> _trustedSites = List<String>.from(_defaultTrustedSites);
 
   MealPlanWeek _mealPlan = MealPlanWeek(
     entries: const <MealPlanEntry>[
@@ -64,6 +72,11 @@ class _KondateHomeState extends State<KondateHome> {
     final double? savedServings = prefs.getDouble(_servingsPrefsKey);
     if (savedServings != null && savedServings > 0) {
       _targetServings = savedServings;
+    }
+
+    final List<String>? savedSites = prefs.getStringList(_trustedSitesPrefsKey);
+    if (savedSites != null && savedSites.isNotEmpty) {
+      _trustedSites = savedSites;
     }
 
     final String? recipesRaw = prefs.getString(_recipesPrefsKey);
@@ -120,6 +133,11 @@ class _KondateHomeState extends State<KondateHome> {
     final String encoded =
         jsonEncode(_mealPlan.entries.map(_mealPlanEntryToJson).toList());
     await prefs.setString(_mealPlanPrefsKey, encoded);
+  }
+
+  Future<void> _saveTrustedSites() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_trustedSitesPrefsKey, _trustedSites);
   }
 
   Future<void> _incrementServings() async {
@@ -188,6 +206,24 @@ class _KondateHomeState extends State<KondateHome> {
     await _saveRecipes();
   }
 
+  Future<void> _openTrustedSitesScreen() async {
+    final List<String>? sites = await Navigator.of(context).push<List<String>>(
+      MaterialPageRoute(
+        builder: (_) => TrustedSitesScreen(
+          initialSites: _trustedSites,
+        ),
+      ),
+    );
+
+    if (sites == null) return;
+
+    setState(() {
+      _trustedSites = sites;
+    });
+
+    await _saveTrustedSites();
+  }
+
   Future<void> _removeRecipeAt(int index) async {
     setState(() {
       _recipes.removeAt(index);
@@ -214,6 +250,7 @@ class _KondateHomeState extends State<KondateHome> {
           currentDishIdea: current.dishIdea ?? '',
           currentRecipeId: current.recipeId,
           recipes: _recipes,
+          trustedSites: _trustedSites,
         ),
       ),
     );
@@ -443,6 +480,11 @@ class _KondateHomeState extends State<KondateHome> {
         title: const Text('Kondate – MVP'),
         actions: <Widget>[
           IconButton(
+            tooltip: 'Trusted sites',
+            icon: const Icon(Icons.public),
+            onPressed: _openTrustedSitesScreen,
+          ),
+          IconButton(
             tooltip: 'Clear imported recipes',
             icon: const Icon(Icons.delete_sweep),
             onPressed: _recipes.isEmpty ? null : _clearRecipes,
@@ -605,6 +647,7 @@ class MealPlanDayScreen extends StatefulWidget {
   final String currentDishIdea;
   final String? currentRecipeId;
   final List<Recipe> recipes;
+  final List<String> trustedSites;
 
   const MealPlanDayScreen({
     super.key,
@@ -612,6 +655,7 @@ class MealPlanDayScreen extends StatefulWidget {
     required this.currentDishIdea,
     required this.currentRecipeId,
     required this.recipes,
+    required this.trustedSites,
   });
 
   @override
@@ -643,7 +687,10 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
 
     final Recipe? importedRecipe = await Navigator.of(context).push<Recipe>(
       MaterialPageRoute(
-        builder: (_) => RecipeSuggestionScreen(dishIdea: dishIdea),
+        builder: (_) => RecipeSuggestionScreen(
+          dishIdea: dishIdea,
+          trustedSites: widget.trustedSites,
+        ),
       ),
     );
 
@@ -758,12 +805,149 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
   }
 }
 
+class TrustedSitesScreen extends StatefulWidget {
+  final List<String> initialSites;
+
+  const TrustedSitesScreen({
+    super.key,
+    required this.initialSites,
+  });
+
+  @override
+  State<TrustedSitesScreen> createState() => _TrustedSitesScreenState();
+}
+
+class _TrustedSitesScreenState extends State<TrustedSitesScreen> {
+  late final TextEditingController _newSiteController;
+  late List<String> _sites;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _newSiteController = TextEditingController();
+    _sites = List<String>.from(widget.initialSites);
+  }
+
+  void _addSite() {
+    final String raw = _newSiteController.text.trim().toLowerCase();
+    if (raw.isEmpty) return;
+
+    final String site = raw
+        .replaceAll('https://', '')
+        .replaceAll('http://', '')
+        .replaceAll('/', '');
+
+    if (site.isEmpty || !site.contains('.')) {
+      setState(() {
+        _error = 'Please enter a valid domain like chefkoch.de';
+      });
+      return;
+    }
+
+    if (_sites.contains(site)) {
+      setState(() {
+        _error = 'That site is already in the list.';
+      });
+      return;
+    }
+
+    setState(() {
+      _sites.add(site);
+      _sites.sort();
+      _newSiteController.clear();
+      _error = null;
+    });
+  }
+
+  void _removeSite(String site) {
+    setState(() {
+      _sites.remove(site);
+    });
+  }
+
+  @override
+  void dispose() {
+    _newSiteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Trusted sites'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _newSiteController,
+              decoration: const InputDecoration(
+                labelText: 'Add website domain',
+                hintText: 'e.g. chefkoch.de',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton(
+                onPressed: _addSite,
+                child: const Text('Add site'),
+              ),
+            ),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _sites.length,
+                itemBuilder: (_, int i) {
+                  final String site = _sites[i];
+                  return ListTile(
+                    title: Text(site),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _removeSite(site),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(_sites),
+                    child: const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TrustedSearchSite {
-  final String name;
   final String domain;
 
   const _TrustedSearchSite({
-    required this.name,
     required this.domain,
   });
 
@@ -780,10 +964,12 @@ class _TrustedSearchSite {
 
 class RecipeSuggestionScreen extends StatefulWidget {
   final String dishIdea;
+  final List<String> trustedSites;
 
   const RecipeSuggestionScreen({
     super.key,
     required this.dishIdea,
+    required this.trustedSites,
   });
 
   @override
@@ -791,12 +977,6 @@ class RecipeSuggestionScreen extends StatefulWidget {
 }
 
 class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
-  static const List<_TrustedSearchSite> _sites = <_TrustedSearchSite>[
-    _TrustedSearchSite(name: 'Chefkoch', domain: 'chefkoch.de'),
-    _TrustedSearchSite(name: 'EatSmarter', domain: 'eatsmarter.de'),
-    _TrustedSearchSite(name: 'Springlane', domain: 'springlane.de'),
-  ];
-
   final TextEditingController _chosenUrlController = TextEditingController();
   bool _importing = false;
   String? _error;
@@ -850,7 +1030,10 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<_TrustedSearchSite> sites = _sites.take(3).toList();
+    final List<_TrustedSearchSite> sites = widget.trustedSites
+        .take(3)
+        .map((String domain) => _TrustedSearchSite(domain: domain))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -868,11 +1051,16 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            if (sites.isEmpty)
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No trusted sites configured yet.'),
+              ),
             ...sites.map((site) {
               return Card(
                 child: ListTile(
-                  title: Text(site.name),
-                  subtitle: Text(site.domain),
+                  title: Text(site.domain),
+                  subtitle: const Text('Open search results in browser'),
                   trailing: const Icon(Icons.open_in_new),
                   onTap: () => _openSiteSearch(site),
                 ),
