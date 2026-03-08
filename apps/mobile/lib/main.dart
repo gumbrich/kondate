@@ -4,6 +4,7 @@ import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 import 'package:recipe_parser/recipe_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const KondateApp());
@@ -205,20 +206,30 @@ class _KondateHomeState extends State<KondateHome> {
     final MealPlanEntry current =
         _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
 
-    final _MealPlanEditResult? result = await showModalBottomSheet<_MealPlanEditResult>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _MealPlanEditSheet(
-        weekdayLabel: _weekdayLabel(weekday),
-        currentDishIdea: current.dishIdea ?? '',
-        currentRecipeId: current.recipeId,
-        recipes: _recipes,
+    final _MealPlanEditResult? result =
+        await Navigator.of(context).push<_MealPlanEditResult>(
+      MaterialPageRoute(
+        builder: (_) => MealPlanDayScreen(
+          weekdayLabel: _weekdayLabel(weekday),
+          currentDishIdea: current.dishIdea ?? '',
+          currentRecipeId: current.recipeId,
+          recipes: _recipes,
+        ),
       ),
     );
 
     if (result == null) return;
 
     setState(() {
+      if (result.importedRecipe != null) {
+        final bool exists = _recipes.any(
+          (Recipe r) => r.id == result.importedRecipe!.id,
+        );
+        if (!exists) {
+          _recipes.add(result.importedRecipe!);
+        }
+      }
+
       _mealPlan = _mealPlan.upsert(
         current.copyWith(
           dishIdea: result.dishIdea,
@@ -228,6 +239,7 @@ class _KondateHomeState extends State<KondateHome> {
       _error = null;
     });
 
+    await _saveRecipes();
     await _saveMealPlan();
   }
 
@@ -579,20 +591,23 @@ class _KondateHomeState extends State<KondateHome> {
 class _MealPlanEditResult {
   final String dishIdea;
   final String? recipeId;
+  final Recipe? importedRecipe;
 
   const _MealPlanEditResult({
     required this.dishIdea,
     required this.recipeId,
+    this.importedRecipe,
   });
 }
 
-class _MealPlanEditSheet extends StatefulWidget {
+class MealPlanDayScreen extends StatefulWidget {
   final String weekdayLabel;
   final String currentDishIdea;
   final String? currentRecipeId;
   final List<Recipe> recipes;
 
-  const _MealPlanEditSheet({
+  const MealPlanDayScreen({
+    super.key,
     required this.weekdayLabel,
     required this.currentDishIdea,
     required this.currentRecipeId,
@@ -600,18 +615,60 @@ class _MealPlanEditSheet extends StatefulWidget {
   });
 
   @override
-  State<_MealPlanEditSheet> createState() => _MealPlanEditSheetState();
+  State<MealPlanDayScreen> createState() => _MealPlanDayScreenState();
 }
 
-class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
+class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
   late final TextEditingController _dishIdeaController;
+  late final List<Recipe> _recipes;
   String? _selectedRecipeId;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _dishIdeaController = TextEditingController(text: widget.currentDishIdea);
+    _recipes = List<Recipe>.from(widget.recipes);
     _selectedRecipeId = widget.currentRecipeId;
+  }
+
+  Future<void> _openRecipeSuggestionScreen() async {
+    final String dishIdea = _dishIdeaController.text.trim();
+    if (dishIdea.isEmpty) {
+      setState(() {
+        _error = 'Please enter a dish idea first.';
+      });
+      return;
+    }
+
+    final Recipe? importedRecipe = await Navigator.of(context).push<Recipe>(
+      MaterialPageRoute(
+        builder: (_) => RecipeSuggestionScreen(dishIdea: dishIdea),
+      ),
+    );
+
+    if (importedRecipe == null) return;
+
+    setState(() {
+      _recipes.add(importedRecipe);
+      _selectedRecipeId = importedRecipe.id;
+      _error = null;
+    });
+  }
+
+  void _save() {
+    final Recipe? importedRecipe = _recipes.cast<Recipe?>().firstWhere(
+          (Recipe? r) => r?.id == _selectedRecipeId,
+          orElse: () => null,
+        );
+
+    Navigator.of(context).pop(
+      _MealPlanEditResult(
+        dishIdea: _dishIdeaController.text.trim(),
+        recipeId: _selectedRecipeId,
+        importedRecipe: importedRecipe,
+      ),
+    );
   }
 
   @override
@@ -622,22 +679,14 @@ class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
-      child: SingleChildScrollView(
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.weekdayLabel),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(
-              widget.weekdayLabel,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
             TextField(
               controller: _dishIdeaController,
               decoration: const InputDecoration(
@@ -656,7 +705,7 @@ class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
                   value: null,
                   child: Text('No recipe selected'),
                 ),
-                ...widget.recipes.map((Recipe recipe) {
+                ..._recipes.map((Recipe recipe) {
                   return DropdownMenuItem<String?>(
                     value: recipe.id,
                     child: Text(recipe.title),
@@ -669,7 +718,22 @@ class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
                 });
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton(
+                onPressed: _openRecipeSuggestionScreen,
+                child: const Text('Find recipe suggestions'),
+              ),
+            ),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            const Spacer(),
             Row(
               children: <Widget>[
                 Expanded(
@@ -681,18 +745,163 @@ class _MealPlanEditSheetState extends State<_MealPlanEditSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop(
-                        _MealPlanEditResult(
-                          dishIdea: _dishIdeaController.text.trim(),
-                          recipeId: _selectedRecipeId,
-                        ),
-                      );
-                    },
+                    onPressed: _save,
                     child: const Text('Save'),
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrustedSearchSite {
+  final String name;
+  final String domain;
+
+  const _TrustedSearchSite({
+    required this.name,
+    required this.domain,
+  });
+
+  Uri searchUri(String dishIdea) {
+    return Uri.https(
+      'www.google.com',
+      '/search',
+      <String, String>{
+        'q': 'site:$domain $dishIdea rezept',
+      },
+    );
+  }
+}
+
+class RecipeSuggestionScreen extends StatefulWidget {
+  final String dishIdea;
+
+  const RecipeSuggestionScreen({
+    super.key,
+    required this.dishIdea,
+  });
+
+  @override
+  State<RecipeSuggestionScreen> createState() => _RecipeSuggestionScreenState();
+}
+
+class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
+  static const List<_TrustedSearchSite> _sites = <_TrustedSearchSite>[
+    _TrustedSearchSite(name: 'Chefkoch', domain: 'chefkoch.de'),
+    _TrustedSearchSite(name: 'EatSmarter', domain: 'eatsmarter.de'),
+    _TrustedSearchSite(name: 'Springlane', domain: 'springlane.de'),
+  ];
+
+  final TextEditingController _chosenUrlController = TextEditingController();
+  bool _importing = false;
+  String? _error;
+
+  Future<void> _openSiteSearch(_TrustedSearchSite site) async {
+    final Uri uri = site.searchUri(widget.dishIdea);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _importChosenRecipe() async {
+    final String urlText = _chosenUrlController.text.trim();
+    if (urlText.isEmpty) {
+      setState(() {
+        _error = 'Please paste the chosen recipe URL.';
+      });
+      return;
+    }
+
+    setState(() {
+      _importing = true;
+      _error = null;
+    });
+
+    try {
+      final KondateRecipeImporter importer = KondateRecipeImporter();
+      final Recipe recipe = await importer.importRecipe(
+        url: Uri.parse(urlText),
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(recipe);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _importing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _chosenUrlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<_TrustedSearchSite> sites = _sites.take(3).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Suggestions: ${widget.dishIdea}'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: <Widget>[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Trusted site suggestions',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...sites.map((site) {
+              return Card(
+                child: ListTile(
+                  title: Text(site.name),
+                  subtitle: Text(site.domain),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => _openSiteSearch(site),
+                ),
+              );
+            }),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _chosenUrlController,
+              decoration: const InputDecoration(
+                labelText: 'Chosen recipe URL',
+                hintText: 'Paste the final recipe URL here',
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_importing) const LinearProgressIndicator(),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton(
+                onPressed: _importing ? null : _importChosenRecipe,
+                child: const Text('Import selected recipe'),
+              ),
             ),
           ],
         ),
