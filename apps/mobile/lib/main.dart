@@ -6,7 +6,9 @@ import 'package:recipe_parser/recipe_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'household_sync_provider.dart';
 import 'recipe_search_provider.dart';
+import 'sync_debug_screen.dart';
 
 void main() {
   runApp(const KondateApp());
@@ -41,10 +43,12 @@ class _KondateHomeState extends State<KondateHome> {
     'springlane.de',
   ];
 
-  final TextEditingController _urlController = TextEditingController();
-
   static const RecipeSearchProvider _recipeSearchProvider =
       MockRecipeSearchProvider();
+  static const HouseholdSyncProvider _householdSyncProvider =
+      MockHouseholdSyncProvider();
+
+  final TextEditingController _urlController = TextEditingController();
 
   bool _loading = false;
   bool _dataLoaded = false;
@@ -259,6 +263,16 @@ class _KondateHomeState extends State<KondateHome> {
 
     await _saveTrustedSites();
     await _saveTopN();
+  }
+
+  Future<void> _openSyncDebugScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SyncDebugScreen(
+          syncProvider: _householdSyncProvider,
+        ),
+      ),
+    );
   }
 
   Future<void> _removeRecipeAt(int index) async {
@@ -518,6 +532,11 @@ class _KondateHomeState extends State<KondateHome> {
       appBar: AppBar(
         title: const Text('Kondate – MVP'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Sync debug',
+            icon: const Icon(Icons.cloud_sync),
+            onPressed: _openSyncDebugScreen,
+          ),
           IconButton(
             tooltip: 'Trusted sites',
             icon: const Icon(Icons.public),
