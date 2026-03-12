@@ -43,6 +43,9 @@ class _KondateHomeState extends State<KondateHome> {
 
   final TextEditingController _urlController = TextEditingController();
 
+  static const RecipeSearchProvider _recipeSearchProvider =
+      MockRecipeSearchProvider();
+
   bool _loading = false;
   bool _dataLoaded = false;
   String? _error;
@@ -286,6 +289,7 @@ class _KondateHomeState extends State<KondateHome> {
           recipes: _recipes,
           trustedSites: _trustedSites,
           topN: _topN,
+          recipeSearchProvider: _recipeSearchProvider,
         ),
       ),
     );
@@ -716,6 +720,7 @@ class MealPlanDayScreen extends StatefulWidget {
   final List<Recipe> recipes;
   final List<String> trustedSites;
   final int topN;
+  final RecipeSearchProvider recipeSearchProvider;
 
   const MealPlanDayScreen({
     super.key,
@@ -725,6 +730,7 @@ class MealPlanDayScreen extends StatefulWidget {
     required this.recipes,
     required this.trustedSites,
     required this.topN,
+    required this.recipeSearchProvider,
   });
 
   @override
@@ -760,6 +766,7 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
           dishIdea: dishIdea,
           trustedSites: widget.trustedSites,
           topN: widget.topN,
+          recipeSearchProvider: widget.recipeSearchProvider,
         ),
       ),
     );
@@ -1076,12 +1083,14 @@ class RecipeSuggestionScreen extends StatefulWidget {
   final String dishIdea;
   final List<String> trustedSites;
   final int topN;
+  final RecipeSearchProvider recipeSearchProvider;
 
   const RecipeSuggestionScreen({
     super.key,
     required this.dishIdea,
     required this.trustedSites,
     required this.topN,
+    required this.recipeSearchProvider,
   });
 
   @override
@@ -1090,14 +1099,13 @@ class RecipeSuggestionScreen extends StatefulWidget {
 
 class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   final TextEditingController _chosenUrlController = TextEditingController();
-  final RecipeSearchProvider _provider = const MockRecipeSearchProvider();
 
   bool _importing = false;
   String? _error;
 
   Future<void> _openCandidate(RecipeSuggestionCandidate candidate) async {
     await launchUrl(
-      candidate.searchUri,
+      candidate.openUri,
       mode: LaunchMode.externalApplication,
     );
   }
@@ -1147,7 +1155,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<RecipeSuggestionCandidate>>(
-      future: _provider.search(
+      future: widget.recipeSearchProvider.search(
         dishIdea: widget.dishIdea,
         trustedSites: widget.trustedSites,
         topN: widget.topN,
