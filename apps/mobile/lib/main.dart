@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
-import 'package:recipe_parser/recipe_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_state.dart';
 import 'household_sync_provider.dart';
 import 'recipe_search_provider.dart';
 import 'sync_debug_screen.dart';
@@ -31,18 +29,6 @@ class KondateHome extends StatefulWidget {
 }
 
 class _KondateHomeState extends State<KondateHome> {
-  static const String _recipesPrefsKey = 'saved_recipes_v1';
-  static const String _servingsPrefsKey = 'target_servings_v1';
-  static const String _mealPlanPrefsKey = 'meal_plan_v1';
-  static const String _trustedSitesPrefsKey = 'trusted_sites_v1';
-  static const String _topNPrefsKey = 'recipe_top_n_v1';
-
-  static const List<String> _defaultTrustedSites = <String>[
-    'chefkoch.de',
-    'eatsmarter.de',
-    'springlane.de',
-  ];
-
   static const RecipeSearchProvider _recipeSearchProvider =
       MockRecipeSearchProvider();
   static const HouseholdSyncProvider _householdSyncProvider =
@@ -53,23 +39,7 @@ class _KondateHomeState extends State<KondateHome> {
   bool _loading = false;
   bool _dataLoaded = false;
   String? _error;
-
-  final List<Recipe> _recipes = <Recipe>[];
-  double _targetServings = 2.5;
-  int _topN = 3;
-  List<String> _trustedSites = List<String>.from(_defaultTrustedSites);
-
-  MealPlanWeek _mealPlan = MealPlanWeek(
-    entries: const <MealPlanEntry>[
-      MealPlanEntry(weekday: WeekdayDe.montag),
-      MealPlanEntry(weekday: WeekdayDe.dienstag),
-      MealPlanEntry(weekday: WeekdayDe.mittwoch),
-      MealPlanEntry(weekday: WeekdayDe.donnerstag),
-      MealPlanEntry(weekday: WeekdayDe.freitag),
-      MealPlanEntry(weekday: WeekdayDe.samstag),
-      MealPlanEntry(weekday: WeekdayDe.sonntag),
-    ],
-  );
+  KondateAppState _appState = KondateAppState.initial();
 
   @override
   void initState() {
@@ -78,119 +48,53 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _loadState() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    final double? savedServings = prefs.getDouble(_servingsPrefsKey);
-    if (savedServings != null && savedServings > 0) {
-      _targetServings = savedServings;
+    try {
+      final KondateAppState state = await KondateAppState.load();
+      if (!mounted) return;
+      setState(() {
+        _appState = state;
+        _dataLoaded = true;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dataLoaded = true;
+        _error = 'Could not restore app state: $e';
+      });
     }
-
-    final int? savedTopN = prefs.getInt(_topNPrefsKey);
-    if (savedTopN != null && savedTopN > 0) {
-      _topN = savedTopN;
-    }
-
-    final List<String>? savedSites = prefs.getStringList(_trustedSitesPrefsKey);
-    if (savedSites != null && savedSites.isNotEmpty) {
-      _trustedSites = savedSites;
-    }
-
-    final String? recipesRaw = prefs.getString(_recipesPrefsKey);
-    if (recipesRaw != null && recipesRaw.isNotEmpty) {
-      try {
-        final List<dynamic> decoded = jsonDecode(recipesRaw) as List<dynamic>;
-        final List<Recipe> loaded = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(_recipeFromJson)
-            .toList();
-
-        _recipes
-          ..clear()
-          ..addAll(loaded);
-      } catch (_) {
-        _error = 'Could not restore saved recipes.';
-      }
-    }
-
-    final String? mealPlanRaw = prefs.getString(_mealPlanPrefsKey);
-    if (mealPlanRaw != null && mealPlanRaw.isNotEmpty) {
-      try {
-        final List<dynamic> decoded = jsonDecode(mealPlanRaw) as List<dynamic>;
-        final List<MealPlanEntry> entries = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(_mealPlanEntryFromJson)
-            .toList();
-
-        _mealPlan = MealPlanWeek(entries: entries);
-      } catch (_) {
-        _error = 'Could not restore meal plan.';
-      }
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _dataLoaded = true;
-    });
   }
 
-  Future<void> _saveRecipes() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String encoded = jsonEncode(_recipes.map(_recipeToJson).toList());
-    await prefs.setString(_recipesPrefsKey, encoded);
-  }
-
-  Future<void> _saveServings() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_servingsPrefsKey, _targetServings);
-  }
-
-  Future<void> _saveTopN() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_topNPrefsKey, _topN);
-  }
-
-  Future<void> _saveMealPlan() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String encoded =
-        jsonEncode(_mealPlan.entries.map(_mealPlanEntryToJson).toList());
-    await prefs.setString(_mealPlanPrefsKey, encoded);
-  }
-
-  Future<void> _saveTrustedSites() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_trustedSitesPrefsKey, _trustedSites);
+  Future<void> _persistState() async {
+    await _appState.saveAll();
   }
 
   Future<void> _incrementServings() async {
     setState(() {
-      _targetServings += 0.5;
+      _appState = _appState.incrementServings();
     });
-    await _saveServings();
+    await _persistState();
   }
 
   Future<void> _decrementServings() async {
-    if (_targetServings <= 0.5) return;
-
     setState(() {
-      _targetServings -= 0.5;
+      _appState = _appState.decrementServings();
     });
-    await _saveServings();
+    await _persistState();
   }
 
   Future<void> _incrementTopN() async {
     setState(() {
-      _topN += 1;
+      _appState = _appState.incrementTopN();
     });
-    await _saveTopN();
+    await _persistState();
   }
 
   Future<void> _decrementTopN() async {
-    if (_topN <= 1) return;
-
     setState(() {
-      _topN -= 1;
+      _appState = _appState.decrementTopN();
     });
-    await _saveTopN();
+    await _persistState();
   }
 
   Future<void> _importAndAdd() async {
@@ -203,18 +107,14 @@ class _KondateHomeState extends State<KondateHome> {
     });
 
     try {
-      final KondateRecipeImporter importer = KondateRecipeImporter();
-      final Recipe recipe = await importer.importRecipe(
-        url: Uri.parse(urlText),
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-      );
+      final Recipe recipe = await KondateAppState.importRecipeFromUrl(urlText);
 
       setState(() {
-        _recipes.add(recipe);
+        _appState = _appState.addRecipe(recipe);
         _urlController.clear();
       });
 
-      await _saveRecipes();
+      await _persistState();
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -236,11 +136,11 @@ class _KondateHomeState extends State<KondateHome> {
     if (recipe == null) return;
 
     setState(() {
-      _recipes.add(recipe);
+      _appState = _appState.addRecipe(recipe);
       _error = null;
     });
 
-    await _saveRecipes();
+    await _persistState();
   }
 
   Future<void> _openTrustedSitesScreen() async {
@@ -248,8 +148,8 @@ class _KondateHomeState extends State<KondateHome> {
         await Navigator.of(context).push<_TrustedSitesResult>(
       MaterialPageRoute(
         builder: (_) => TrustedSitesScreen(
-          initialSites: _trustedSites,
-          initialTopN: _topN,
+          initialSites: _appState.trustedSites,
+          initialTopN: _appState.topN,
         ),
       ),
     );
@@ -257,12 +157,13 @@ class _KondateHomeState extends State<KondateHome> {
     if (result == null) return;
 
     setState(() {
-      _trustedSites = result.sites;
-      _topN = result.topN;
+      _appState = _appState.updateTrustedSites(
+        sites: result.sites,
+        topN: result.topN,
+      );
     });
 
-    await _saveTrustedSites();
-    await _saveTopN();
+    await _persistState();
   }
 
   Future<void> _openSyncDebugScreen() async {
@@ -277,21 +178,21 @@ class _KondateHomeState extends State<KondateHome> {
 
   Future<void> _removeRecipeAt(int index) async {
     setState(() {
-      _recipes.removeAt(index);
+      _appState = _appState.removeRecipeAt(index);
     });
-    await _saveRecipes();
+    await _persistState();
   }
 
   Future<void> _clearRecipes() async {
     setState(() {
-      _recipes.clear();
+      _appState = _appState.clearRecipes();
     });
-    await _saveRecipes();
+    await _persistState();
   }
 
   Future<void> _editWeekday(WeekdayDe weekday) async {
     final MealPlanEntry current =
-        _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
+        _appState.mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
 
     final _MealPlanEditResult? result =
         await Navigator.of(context).push<_MealPlanEditResult>(
@@ -300,9 +201,9 @@ class _KondateHomeState extends State<KondateHome> {
           weekdayLabel: _weekdayLabel(weekday),
           currentDishIdea: current.dishIdea ?? '',
           currentRecipeId: current.recipeId,
-          recipes: _recipes,
-          trustedSites: _trustedSites,
-          topN: _topN,
+          recipes: _appState.recipes,
+          trustedSites: _appState.trustedSites,
+          topN: _appState.topN,
           recipeSearchProvider: _recipeSearchProvider,
         ),
       ),
@@ -311,83 +212,43 @@ class _KondateHomeState extends State<KondateHome> {
     if (result == null) return;
 
     setState(() {
-      if (result.importedRecipe != null) {
-        final bool exists = _recipes.any(
-          (Recipe r) => r.id == result.importedRecipe!.id,
-        );
-        if (!exists) {
-          _recipes.add(result.importedRecipe!);
-        }
+      if (result.importedRecipe != null &&
+          !_appState.recipes.any((Recipe r) => r.id == result.importedRecipe!.id)) {
+        _appState = _appState.addRecipe(result.importedRecipe!);
       }
 
-      _mealPlan = _mealPlan.upsert(
-        current.copyWith(
-          dishIdea: result.dishIdea,
-          recipeId: result.recipeId,
-        ),
+      _appState = _appState.updateMealPlanEntry(
+        weekday: weekday,
+        dishIdea: result.dishIdea,
+        recipeId: result.recipeId,
       );
       _error = null;
     });
 
-    await _saveRecipes();
-    await _saveMealPlan();
+    await _persistState();
   }
 
   Future<void> _clearWeekday(WeekdayDe weekday) async {
-    final MealPlanEntry current =
-        _mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
-
     setState(() {
-      _mealPlan = _mealPlan.upsert(
-        current.copyWith(
-          dishIdea: '',
-          recipeId: null,
-        ),
-      );
+      _appState = _appState.clearWeekday(weekday);
     });
-
-    await _saveMealPlan();
+    await _persistState();
   }
 
   void _openShoppingList() {
-    final List<Recipe> selectedRecipes = _selectedMealPlanRecipes();
-
     final ShoppingList list = IngredientAggregator.fromRecipes(
-      selectedRecipes,
-      targetServings: _targetServings,
+      _appState.selectedMealPlanRecipes(),
+      targetServings: _appState.targetServings,
     );
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ShoppingListScreen(
-          targetServings: _targetServings,
+          targetServings: _appState.targetServings,
           list: list,
         ),
       ),
     );
-  }
-
-  List<Recipe> _selectedMealPlanRecipes() {
-    final List<Recipe> result = <Recipe>[];
-
-    for (final MealPlanEntry entry in _mealPlan.entries) {
-      final String? recipeId = entry.recipeId;
-      if (recipeId == null) continue;
-
-      final Recipe? recipe = _findRecipeById(recipeId);
-      if (recipe != null) {
-        result.add(recipe);
-      }
-    }
-
-    return result;
-  }
-
-  Recipe? _findRecipeById(String id) {
-    for (final Recipe recipe in _recipes) {
-      if (recipe.id == id) return recipe;
-    }
-    return null;
   }
 
   String _weekdayLabel(WeekdayDe weekday) {
@@ -411,7 +272,7 @@ class _KondateHomeState extends State<KondateHome> {
 
   String _mealPlanSubtitle(MealPlanEntry entry) {
     final Recipe? recipe =
-        entry.recipeId == null ? null : _findRecipeById(entry.recipeId!);
+        entry.recipeId == null ? null : _appState.findRecipeById(entry.recipeId!);
 
     if (entry.dishIdea != null &&
         entry.dishIdea!.trim().isNotEmpty &&
@@ -430,88 +291,6 @@ class _KondateHomeState extends State<KondateHome> {
     return 'No plan yet';
   }
 
-  Map<String, dynamic> _recipeToJson(Recipe recipe) {
-    return <String, dynamic>{
-      'id': recipe.id,
-      'title': recipe.title,
-      'sourceUrl': recipe.sourceUrl.toString(),
-      'defaultServings': recipe.defaultServings,
-      'ingredients': recipe.ingredients.map(_ingredientLineToJson).toList(),
-    };
-  }
-
-  Recipe _recipeFromJson(Map<String, dynamic> json) {
-    final List<dynamic> ingredientsRaw =
-        json['ingredients'] as List<dynamic>? ?? <dynamic>[];
-
-    return Recipe(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      sourceUrl: Uri.parse(
-        json['sourceUrl'] as String? ?? 'https://example.com',
-      ),
-      defaultServings: (json['defaultServings'] as num?)?.toDouble(),
-      ingredients: ingredientsRaw
-          .whereType<Map<String, dynamic>>()
-          .map(_ingredientLineFromJson)
-          .toList(),
-    );
-  }
-
-  Map<String, dynamic> _ingredientLineToJson(IngredientLine line) {
-    return <String, dynamic>{
-      'raw': line.raw,
-      'normalizedName': line.normalizedName,
-      'quantity': line.quantity == null
-          ? null
-          : <String, dynamic>{
-              'value': line.quantity!.value,
-              'unit': line.quantity!.unit.name,
-            },
-    };
-  }
-
-  IngredientLine _ingredientLineFromJson(Map<String, dynamic> json) {
-    final Map<String, dynamic>? q = json['quantity'] as Map<String, dynamic>?;
-
-    return IngredientLine(
-      raw: json['raw'] as String? ?? '',
-      normalizedName: json['normalizedName'] as String?,
-      quantity: q == null
-          ? null
-          : Quantity(
-              (q['value'] as num).toDouble(),
-              _unitFromName(q['unit'] as String?),
-            ),
-    );
-  }
-
-  Map<String, dynamic> _mealPlanEntryToJson(MealPlanEntry entry) {
-    return <String, dynamic>{
-      'weekday': entry.weekday.name,
-      'dishIdea': entry.dishIdea,
-      'recipeId': entry.recipeId,
-    };
-  }
-
-  MealPlanEntry _mealPlanEntryFromJson(Map<String, dynamic> json) {
-    return MealPlanEntry(
-      weekday: WeekdayDe.values.firstWhere(
-        (WeekdayDe d) => d.name == json['weekday'],
-        orElse: () => WeekdayDe.montag,
-      ),
-      dishIdea: json['dishIdea'] as String?,
-      recipeId: json['recipeId'] as String?,
-    );
-  }
-
-  Unit _unitFromName(String? name) {
-    return Unit.values.firstWhere(
-      (Unit u) => u.name == name,
-      orElse: () => Unit.unknown,
-    );
-  }
-
   String _prettyNumber(double x) {
     final String s = x.toStringAsFixed(2);
     return s.replaceAll(RegExp(r'\.?0+$'), '');
@@ -526,7 +305,7 @@ class _KondateHomeState extends State<KondateHome> {
   @override
   Widget build(BuildContext context) {
     final bool canGenerate =
-        _selectedMealPlanRecipes().isNotEmpty && !_loading;
+        _appState.selectedMealPlanRecipes().isNotEmpty && !_loading;
 
     return Scaffold(
       appBar: AppBar(
@@ -545,7 +324,7 @@ class _KondateHomeState extends State<KondateHome> {
           IconButton(
             tooltip: 'Clear imported recipes',
             icon: const Icon(Icons.delete_sweep),
-            onPressed: _recipes.isEmpty ? null : _clearRecipes,
+            onPressed: _appState.recipes.isEmpty ? null : _clearRecipes,
           ),
         ],
       ),
@@ -593,7 +372,7 @@ class _KondateHomeState extends State<KondateHome> {
                         icon: const Icon(Icons.remove_circle_outline),
                       ),
                       Text(
-                        _prettyNumber(_targetServings),
+                        _prettyNumber(_appState.targetServings),
                         style: const TextStyle(fontSize: 18),
                       ),
                       IconButton(
@@ -615,7 +394,7 @@ class _KondateHomeState extends State<KondateHome> {
                         icon: const Icon(Icons.remove_circle_outline),
                       ),
                       Text(
-                        'Top $_topN',
+                        'Top ${_appState.topN}',
                         style: const TextStyle(fontSize: 18),
                       ),
                       IconButton(
@@ -650,7 +429,7 @@ class _KondateHomeState extends State<KondateHome> {
                     child: ListView(
                       children: WeekdayDe.values.map((WeekdayDe weekday) {
                         final MealPlanEntry entry =
-                            _mealPlan.entryFor(weekday) ??
+                            _appState.mealPlan.entryFor(weekday) ??
                                 MealPlanEntry(weekday: weekday);
 
                         final bool hasAnything =
@@ -677,7 +456,7 @@ class _KondateHomeState extends State<KondateHome> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Saved recipes (${_recipes.length})',
+                      'Saved recipes (${_appState.recipes.length})',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -685,9 +464,9 @@ class _KondateHomeState extends State<KondateHome> {
                   SizedBox(
                     height: 180,
                     child: ListView.builder(
-                      itemCount: _recipes.length,
+                      itemCount: _appState.recipes.length,
                       itemBuilder: (_, int i) {
-                        final Recipe r = _recipes[i];
+                        final Recipe r = _appState.recipes[i];
                         return ListTile(
                           title: Text(r.title),
                           subtitle: Text(
@@ -1144,11 +923,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     });
 
     try {
-      final KondateRecipeImporter importer = KondateRecipeImporter();
-      final Recipe recipe = await importer.importRecipe(
-        url: Uri.parse(urlText),
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-      );
+      final Recipe recipe = await KondateAppState.importRecipeFromUrl(urlText);
 
       if (!mounted) return;
       Navigator.of(context).pop(recipe);
@@ -1406,6 +1181,8 @@ class ShoppingListScreen extends StatefulWidget {
 }
 
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
+  static const String _prefsKey = 'shopping_checked_keys';
+
   static const List<CategoryDe> _categoryOrder = <CategoryDe>[
     CategoryDe.gemuese,
     CategoryDe.obst,
@@ -1420,8 +1197,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     CategoryDe.getraenke,
     CategoryDe.sonstiges,
   ];
-
-  static const String _prefsKey = 'shopping_checked_keys';
 
   final Set<String> _checked = <String>{};
   bool _prefsLoaded = false;
