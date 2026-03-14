@@ -116,7 +116,6 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
 
   void _confirm() {
     if (_selected.isEmpty) return;
-
     Navigator.of(context).pop(_selected);
   }
 
@@ -155,6 +154,10 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: <Widget>[
+              const Text(
+                'Tap a recipe to import it directly. Use the external-link button to inspect it in the browser first.',
+              ),
+              const SizedBox(height: 12),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -176,65 +179,51 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                         fontSize: 16,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     ...day.candidates.map((RecipeSuggestionCandidate candidate) {
-                      final String key =
-                          _candidateKey(day.weekday, candidate);
+                      final String key = _candidateKey(day.weekday, candidate);
                       final bool importing = _importingKeys.contains(key);
+                      final bool selected = selectedRecipe != null &&
+                          selectedRecipe.sourceUrl.toString() ==
+                              candidate.openUri.toString();
 
                       return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            children: <Widget>[
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(candidate.title),
-                                subtitle: Text(candidate.subtitle),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.open_in_new),
-                                  onPressed: () => _openRecipe(candidate),
-                                ),
-                              ),
-                              Row(
-                                children: <Widget>[
-                                  ElevatedButton.icon(
-                                    onPressed: importing
-                                        ? null
-                                        : () => _importCandidate(
-                                              day.weekday,
-                                              candidate,
-                                            ),
-                                    icon: const Icon(Icons.download),
-                                    label: Text(
-                                      importing
-                                          ? 'Importing...'
-                                          : 'Import recipe',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                        child: ListTile(
+                          title: Text(candidate.title),
+                          subtitle: Text(
+                            selected
+                                ? '${candidate.subtitle}\nImported: ${selectedRecipe.title}'
+                                : candidate.subtitle,
                           ),
+                          isThreeLine: selected,
+                          leading: importing
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  selected
+                                      ? Icons.check_circle
+                                      : Icons.download,
+                                  color: selected ? Colors.green : null,
+                                ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.open_in_new),
+                            tooltip: 'Open in browser',
+                            onPressed: () => _openRecipe(candidate),
+                          ),
+                          onTap: importing
+                              ? null
+                              : () => _importCandidate(
+                                    day.weekday,
+                                    candidate,
+                                  ),
                         ),
                       );
                     }),
-
-                    if (selectedRecipe != null) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: <Widget>[
-                          const Icon(Icons.check_circle, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(selectedRecipe.title),
-                          ),
-                        ],
-                      ),
-                    ],
-
                     const SizedBox(height: 24),
                   ],
                 );
