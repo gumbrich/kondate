@@ -106,11 +106,11 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
         _error = e.toString();
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _importingKeys.remove(key);
-      });
+      if (mounted) {
+        setState(() {
+          _importingKeys.remove(key);
+        });
+      }
     }
   }
 
