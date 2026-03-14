@@ -1,4 +1,5 @@
 import 'package:core/core.dart';
+
 import 'recipe_search_provider.dart';
 
 class DayRecipeSuggestions {

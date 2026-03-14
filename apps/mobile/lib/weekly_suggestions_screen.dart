@@ -1,0 +1,235 @@
+import 'package:core/core.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'app_state.dart';
+import 'meal_plan_suggestion_models.dart';
+import 'recipe_search_provider.dart';
+import 'weekly_suggestion_service.dart';
+
+class WeeklySuggestionsScreen extends StatefulWidget {
+  final WeeklySuggestionService suggestionService;
+  final MealPlanWeek mealPlan;
+  final List<String> trustedSites;
+  final int topN;
+
+  const WeeklySuggestionsScreen({
+    super.key,
+    required this.suggestionService,
+    required this.mealPlan,
+    required this.trustedSites,
+    required this.topN,
+  });
+
+  @override
+  State<WeeklySuggestionsScreen> createState() =>
+      _WeeklySuggestionsScreenState();
+}
+
+class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
+  late Future<List<DayRecipeSuggestions>> _future;
+
+  final Map<WeekdayDe, Recipe> _selected = <WeekdayDe, Recipe>{};
+  final Set<String> _importingKeys = <String>{};
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _future = widget.suggestionService.suggestForMealPlan(
+      mealPlan: widget.mealPlan,
+      trustedSites: widget.trustedSites,
+      topN: widget.topN,
+    );
+  }
+
+  String _weekdayLabel(WeekdayDe weekday) {
+    switch (weekday) {
+      case WeekdayDe.montag:
+        return 'Montag';
+      case WeekdayDe.dienstag:
+        return 'Dienstag';
+      case WeekdayDe.mittwoch:
+        return 'Mittwoch';
+      case WeekdayDe.donnerstag:
+        return 'Donnerstag';
+      case WeekdayDe.freitag:
+        return 'Freitag';
+      case WeekdayDe.samstag:
+        return 'Samstag';
+      case WeekdayDe.sonntag:
+        return 'Sonntag';
+    }
+  }
+
+  String _candidateKey(
+    WeekdayDe weekday,
+    RecipeSuggestionCandidate candidate,
+  ) {
+    return '${weekday.name}__${candidate.openUri}';
+  }
+
+  Future<void> _openRecipe(RecipeSuggestionCandidate candidate) async {
+    await launchUrl(
+      candidate.openUri,
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  Future<void> _importCandidate(
+    WeekdayDe weekday,
+    RecipeSuggestionCandidate candidate,
+  ) async {
+    final String key = _candidateKey(weekday, candidate);
+
+    setState(() {
+      _importingKeys.add(key);
+      _error = null;
+    });
+
+    try {
+      final Recipe recipe = await KondateAppState.importRecipeFromUrl(
+        candidate.openUri.toString(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _selected[weekday] = recipe;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _importingKeys.remove(key);
+      });
+    }
+  }
+
+  void _confirm() {
+    Navigator.of(context).pop(_selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Recipe suggestions'),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: _confirm,
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<DayRecipeSuggestions>>(
+        future: _future,
+        builder: (
+          BuildContext context,
+          AsyncSnapshot<List<DayRecipeSuggestions>> snapshot,
+        ) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final List<DayRecipeSuggestions> suggestions = snapshot.data!;
+
+          if (suggestions.isEmpty) {
+            return const Center(
+              child: Text('No days need suggestions.'),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: <Widget>[
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              ...suggestions.map((DayRecipeSuggestions day) {
+                final Recipe? selectedRecipe = _selected[day.weekday];
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      '${_weekdayLabel(day.weekday)} — ${day.dishIdea}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...day.candidates.map((RecipeSuggestionCandidate candidate) {
+                      final String key = _candidateKey(day.weekday, candidate);
+                      final bool importing = _importingKeys.contains(key);
+
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            children: <Widget>[
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(candidate.title),
+                                subtitle: Text(candidate.subtitle),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.open_in_new),
+                                  onPressed: () => _openRecipe(candidate),
+                                ),
+                              ),
+                              Row(
+                                children: <Widget>[
+                                  ElevatedButton.icon(
+                                    onPressed: importing
+                                        ? null
+                                        : () => _importCandidate(
+                                              day.weekday,
+                                              candidate,
+                                            ),
+                                    icon: const Icon(Icons.download),
+                                    label: Text(
+                                      importing
+                                          ? 'Importing...'
+                                          : 'Import this recipe',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    if (selectedRecipe != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: <Widget>[
+                          const Icon(Icons.check_circle, color: Colors.green),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(selectedRecipe.title),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                  ],
+                );
+              }),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}

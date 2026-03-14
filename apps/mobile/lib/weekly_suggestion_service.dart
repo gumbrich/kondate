@@ -1,4 +1,5 @@
 import 'package:core/core.dart';
+
 import 'meal_plan_suggestion_models.dart';
 import 'recipe_search_provider.dart';
 
@@ -14,10 +15,10 @@ class WeeklySuggestionService {
     required List<String> trustedSites,
     required int topN,
   }) async {
-    final List<DayRecipeSuggestions> result = [];
+    final List<DayRecipeSuggestions> result = <DayRecipeSuggestions>[];
 
-    for (final weekday in WeekdayDe.values) {
-      final entry = mealPlan.entryFor(weekday);
+    for (final WeekdayDe weekday in WeekdayDe.values) {
+      final MealPlanEntry? entry = mealPlan.entryFor(weekday);
 
       if (entry == null) continue;
       if (entry.recipeId != null) continue;
@@ -26,7 +27,8 @@ class WeeklySuggestionService {
       final String dishIdea = entry.dishIdea!.trim();
       if (dishIdea.isEmpty) continue;
 
-      final candidates = await recipeSearchProvider.search(
+      final List<RecipeSuggestionCandidate> candidates =
+          await recipeSearchProvider.search(
         dishIdea: dishIdea,
         trustedSites: trustedSites,
         topN: topN,
