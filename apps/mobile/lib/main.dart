@@ -1,16 +1,18 @@
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 
-import 'recipe_list_section.dart';
-import 'weekly_plan_section.dart';
 import 'app_state.dart';
 import 'household_sync_provider.dart';
 import 'manual_recipe_screen.dart';
 import 'meal_plan_day_screen.dart';
+import 'recipe_list_section.dart';
 import 'recipe_search_provider.dart';
 import 'shopping_list_screen.dart';
 import 'sync_debug_screen.dart';
 import 'trusted_sites_screen.dart';
+import 'weekly_plan_section.dart';
+import 'weekly_suggestion_service.dart';
+import 'weekly_suggestions_screen.dart';
 
 void main() {
   runApp(const KondateApp());
@@ -37,6 +39,11 @@ class _KondateHomeState extends State<KondateHome> {
       MockRecipeSearchProvider();
   static const HouseholdSyncProvider _householdSyncProvider =
       MockHouseholdSyncProvider();
+
+  final WeeklySuggestionService _weeklySuggestionService =
+      const WeeklySuggestionService(
+    recipeSearchProvider: _recipeSearchProvider,
+  );
 
   final TextEditingController _urlController = TextEditingController();
 
@@ -180,6 +187,41 @@ class _KondateHomeState extends State<KondateHome> {
     );
   }
 
+  Future<void> _openWeeklySuggestions() async {
+    final Map<WeekdayDe, RecipeSuggestionCandidate>? result =
+        await Navigator.of(context).push<
+            Map<WeekdayDe, RecipeSuggestionCandidate>>(
+      MaterialPageRoute(
+        builder: (_) => WeeklySuggestionsScreen(
+          suggestionService: _weeklySuggestionService,
+          mealPlan: _appState.mealPlan,
+          trustedSites: _appState.trustedSites,
+          topN: _appState.topN,
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    for (final MapEntry<WeekdayDe, RecipeSuggestionCandidate> entry
+        in result.entries) {
+      final WeekdayDe weekday = entry.key;
+      final RecipeSuggestionCandidate candidate = entry.value;
+      final String currentDishIdea =
+          _appState.mealPlan.entryFor(weekday)?.dishIdea ?? '';
+
+      setState(() {
+        _appState = _appState.updateMealPlanEntry(
+          weekday: weekday,
+          dishIdea: currentDishIdea,
+          recipeId: candidate.openUri.toString(),
+        );
+      });
+    }
+
+    await _persistState();
+  }
+
   Future<void> _removeRecipeAt(int index) async {
     setState(() {
       _appState = _appState.removeRecipeAt(index);
@@ -276,32 +318,6 @@ class _KondateHomeState extends State<KondateHome> {
     }
   }
 
-  String _mealPlanSubtitle(MealPlanEntry entry) {
-    final Recipe? recipe =
-        entry.recipeId == null ? null : _appState.findRecipeById(entry.recipeId!);
-
-    if (entry.dishIdea != null &&
-        entry.dishIdea!.trim().isNotEmpty &&
-        recipe != null) {
-      return '${entry.dishIdea!.trim()} • ${recipe.title}';
-    }
-
-    if (entry.dishIdea != null && entry.dishIdea!.trim().isNotEmpty) {
-      return entry.dishIdea!.trim();
-    }
-
-    if (recipe != null) {
-      return recipe.title;
-    }
-
-    return 'No plan yet';
-  }
-
-  String _prettyNumber(double x) {
-    final String s = x.toStringAsFixed(2);
-    return s.replaceAll(RegExp(r'\.?0+$'), '');
-  }
-
   @override
   void dispose() {
     _urlController.dispose();
@@ -360,6 +376,10 @@ class _KondateHomeState extends State<KondateHome> {
                         child: const Text('Manual recipe'),
                       ),
                       ElevatedButton(
+                        onPressed: _openWeeklySuggestions,
+                        child: const Text('Suggest recipes'),
+                      ),
+                      ElevatedButton(
                         onPressed: canGenerate ? _openShoppingList : null,
                         child: const Text('Shopping list'),
                       ),
@@ -378,7 +398,7 @@ class _KondateHomeState extends State<KondateHome> {
                         icon: const Icon(Icons.remove_circle_outline),
                       ),
                       Text(
-                        _prettyNumber(_appState.targetServings),
+                        _appState.targetServings.toString(),
                         style: const TextStyle(fontSize: 18),
                       ),
                       IconButton(
@@ -420,65 +440,23 @@ class _KondateHomeState extends State<KondateHome> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  WeeklyPlanSection(
-                    mealPlan: _appState.mealPlan,
-                    recipes: _appState.recipes,
-                    onEdit: _editWeekday,
-                    onClear: _clearWeekday,
-                  ),
-                  const SizedBox(height: 8),
                   Expanded(
-                    child: ListView(
-                      children: WeekdayDe.values.map((WeekdayDe weekday) {
-                        final MealPlanEntry entry =
-                            _appState.mealPlan.entryFor(weekday) ??
-                                MealPlanEntry(weekday: weekday);
-
-                        final bool hasAnything =
-                            (entry.dishIdea?.trim().isNotEmpty ?? false) ||
-                                entry.recipeId != null;
-
-                        return Card(
-                          child: ListTile(
-                            title: Text(_weekdayLabel(weekday)),
-                            subtitle: Text(_mealPlanSubtitle(entry)),
-                            onTap: () => _editWeekday(weekday),
-                            trailing: hasAnything
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () => _clearWeekday(weekday),
-                                  )
-                                : const Icon(Icons.edit),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: <Widget>[
+                          WeeklyPlanSection(
+                            mealPlan: _appState.mealPlan,
+                            recipes: _appState.recipes,
+                            onEdit: _editWeekday,
+                            onClear: _clearWeekday,
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  RecipeListSection(
-                    recipes: _appState.recipes,
-                    onDelete: _removeRecipeAt,
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 180,
-                    child: ListView.builder(
-                      itemCount: _appState.recipes.length,
-                      itemBuilder: (_, int i) {
-                        final Recipe r = _appState.recipes[i];
-                        return ListTile(
-                          title: Text(r.title),
-                          subtitle: Text(
-                            r.sourceUrl.toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 12),
+                          RecipeListSection(
+                            recipes: _appState.recipes,
+                            onDelete: _removeRecipeAt,
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _removeRecipeAt(i),
-                          ),
-                        );
-                      },
+                        ],
+                      ),
                     ),
                   ),
                 ],
