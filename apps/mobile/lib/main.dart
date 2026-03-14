@@ -188,9 +188,8 @@ class _KondateHomeState extends State<KondateHome> {
   }
 
   Future<void> _openWeeklySuggestions() async {
-    final Map<WeekdayDe, RecipeSuggestionCandidate>? result =
-        await Navigator.of(context).push<
-            Map<WeekdayDe, RecipeSuggestionCandidate>>(
+    final Map<WeekdayDe, Recipe>? result =
+        await Navigator.of(context).push<Map<WeekdayDe, Recipe>>(
       MaterialPageRoute(
         builder: (_) => WeeklySuggestionsScreen(
           suggestionService: _weeklySuggestionService,
@@ -203,18 +202,21 @@ class _KondateHomeState extends State<KondateHome> {
 
     if (result == null) return;
 
-    for (final MapEntry<WeekdayDe, RecipeSuggestionCandidate> entry
-        in result.entries) {
+    for (final MapEntry<WeekdayDe, Recipe> entry in result.entries) {
       final WeekdayDe weekday = entry.key;
-      final RecipeSuggestionCandidate candidate = entry.value;
+      final Recipe recipe = entry.value;
       final String currentDishIdea =
           _appState.mealPlan.entryFor(weekday)?.dishIdea ?? '';
 
       setState(() {
+        if (!_appState.recipes.any((Recipe r) => r.id == recipe.id)) {
+          _appState = _appState.addRecipe(recipe);
+        }
+
         _appState = _appState.updateMealPlanEntry(
           weekday: weekday,
           dishIdea: currentDishIdea,
-          recipeId: candidate.openUri.toString(),
+          recipeId: recipe.id,
         );
       });
     }
@@ -299,6 +301,26 @@ class _KondateHomeState extends State<KondateHome> {
     );
   }
 
+  int _daysNeedingSuggestions() {
+    int count = 0;
+
+    for (final WeekdayDe weekday in WeekdayDe.values) {
+      final MealPlanEntry? entry = _appState.mealPlan.entryFor(weekday);
+
+      if (entry == null) continue;
+
+      final bool hasDishIdea =
+          entry.dishIdea != null && entry.dishIdea!.trim().isNotEmpty;
+      final bool hasRecipe = entry.recipeId != null;
+
+      if (hasDishIdea && !hasRecipe) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
   String _weekdayLabel(WeekdayDe weekday) {
     switch (weekday) {
       case WeekdayDe.montag:
@@ -328,6 +350,7 @@ class _KondateHomeState extends State<KondateHome> {
   Widget build(BuildContext context) {
     final bool canGenerate =
         _appState.selectedMealPlanRecipes().isNotEmpty && !_loading;
+    final int suggestionCount = _daysNeedingSuggestions();
 
     return Scaffold(
       appBar: AppBar(
@@ -376,8 +399,9 @@ class _KondateHomeState extends State<KondateHome> {
                         child: const Text('Manual recipe'),
                       ),
                       ElevatedButton(
-                        onPressed: _openWeeklySuggestions,
-                        child: const Text('Suggest recipes'),
+                        onPressed:
+                            suggestionCount > 0 ? _openWeeklySuggestions : null,
+                        child: Text('Suggest recipes ($suggestionCount)'),
                       ),
                       ElevatedButton(
                         onPressed: canGenerate ? _openShoppingList : null,
