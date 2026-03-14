@@ -78,17 +78,25 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
     if (importedRecipe == null) return;
 
     setState(() {
-      _recipes.add(importedRecipe);
+      final bool alreadyExists = _recipes.any((Recipe r) => r.id == importedRecipe.id);
+      if (!alreadyExists) {
+        _recipes.add(importedRecipe);
+      }
       _selectedRecipeId = importedRecipe.id;
       _error = null;
     });
   }
 
   void _save() {
-    final Recipe? importedRecipe = _recipes.cast<Recipe?>().firstWhere(
-          (Recipe? r) => r?.id == _selectedRecipeId,
-          orElse: () => null,
-        );
+    Recipe? importedRecipe;
+    if (_selectedRecipeId != null) {
+      for (final Recipe recipe in _recipes) {
+        if (recipe.id == _selectedRecipeId) {
+          importedRecipe = recipe;
+          break;
+        }
+      }
+    }
 
     Navigator.of(context).pop(
       MealPlanEditResult(
@@ -107,6 +115,9 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool selectedRecipeStillExists = _selectedRecipeId != null &&
+        _recipes.any((Recipe recipe) => recipe.id == _selectedRecipeId);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.weekdayLabel),
@@ -124,7 +135,7 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              initialValue: _selectedRecipeId,
+              initialValue: selectedRecipeStillExists ? _selectedRecipeId : null,
               decoration: const InputDecoration(
                 labelText: 'Recipe',
               ),

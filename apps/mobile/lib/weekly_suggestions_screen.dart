@@ -31,6 +31,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
 
   final Map<WeekdayDe, Recipe> _selected = <WeekdayDe, Recipe>{};
   final Set<String> _importingKeys = <String>{};
+
   String? _error;
 
   @override
@@ -67,7 +68,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
     WeekdayDe weekday,
     RecipeSuggestionCandidate candidate,
   ) {
-    return '${weekday.name}__${candidate.openUri}';
+    return '${weekday.name}_${candidate.openUri}';
   }
 
   Future<void> _openRecipe(RecipeSuggestionCandidate candidate) async {
@@ -94,16 +95,19 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
       );
 
       if (!mounted) return;
+
       setState(() {
         _selected[weekday] = recipe;
       });
     } catch (e) {
       if (!mounted) return;
+
       setState(() {
         _error = e.toString();
       });
     } finally {
       if (!mounted) return;
+
       setState(() {
         _importingKeys.remove(key);
       });
@@ -111,18 +115,22 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
   }
 
   void _confirm() {
+    if (_selected.isEmpty) return;
+
     Navigator.of(context).pop(_selected);
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool canConfirm = _selected.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recipe suggestions'),
         actions: <Widget>[
           IconButton(
             icon: const Icon(Icons.check),
-            onPressed: _confirm,
+            onPressed: canConfirm ? _confirm : null,
           ),
         ],
       ),
@@ -168,9 +176,12 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                         fontSize: 16,
                       ),
                     ),
+
                     const SizedBox(height: 8),
+
                     ...day.candidates.map((RecipeSuggestionCandidate candidate) {
-                      final String key = _candidateKey(day.weekday, candidate);
+                      final String key =
+                          _candidateKey(day.weekday, candidate);
                       final bool importing = _importingKeys.contains(key);
 
                       return Card(
@@ -200,7 +211,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                                     label: Text(
                                       importing
                                           ? 'Importing...'
-                                          : 'Import this recipe',
+                                          : 'Import recipe',
                                     ),
                                   ),
                                 ],
@@ -210,6 +221,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                         ),
                       );
                     }),
+
                     if (selectedRecipe != null) ...<Widget>[
                       const SizedBox(height: 8),
                       Row(
@@ -222,6 +234,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                         ],
                       ),
                     ],
+
                     const SizedBox(height: 24),
                   ],
                 );
