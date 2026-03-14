@@ -1,6 +1,8 @@
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 
+import 'recipe_list_section.dart';
+import 'weekly_plan_section.dart';
 import 'app_state.dart';
 import 'household_sync_provider.dart';
 import 'manual_recipe_screen.dart';
@@ -418,15 +420,11 @@ class _KondateHomeState extends State<KondateHome> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Weekly plan',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                  WeeklyPlanSection(
+                    mealPlan: _appState.mealPlan,
+                    recipes: _appState.recipes,
+                    onEdit: _editWeekday,
+                    onClear: _clearWeekday,
                   ),
                   const SizedBox(height: 8),
                   Expanded(
@@ -457,12 +455,9 @@ class _KondateHomeState extends State<KondateHome> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Saved recipes (${_appState.recipes.length})',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                  RecipeListSection(
+                    recipes: _appState.recipes,
+                    onDelete: _removeRecipeAt,
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
