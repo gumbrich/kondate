@@ -1,201 +1,178 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:core/core.dart';
-import 'package:recipe_parser/recipe_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KondateAppState {
-  static const String recipesPrefsKey = 'saved_recipes_v1';
-  static const String servingsPrefsKey = 'target_servings_v1';
-  static const String mealPlanPrefsKey = 'meal_plan_v1';
-  static const String trustedSitesPrefsKey = 'trusted_sites_v1';
-  static const String topNPrefsKey = 'recipe_top_n_v1';
-
-  static const List<String> defaultTrustedSites = <String>[
-    'chefkoch.de',
-    'eatsmarter.de',
-    'springlane.de',
-  ];
-
   final List<Recipe> recipes;
-  final double targetServings;
-  final int topN;
-  final List<String> trustedSites;
   final MealPlanWeek mealPlan;
+  final double targetServings;
+  final List<String> trustedSites;
+  final int topN;
 
   const KondateAppState({
     required this.recipes,
-    required this.targetServings,
-    required this.topN,
-    required this.trustedSites,
     required this.mealPlan,
+    required this.targetServings,
+    required this.trustedSites,
+    required this.topN,
   });
 
-  factory KondateAppState.initial() {
-    return KondateAppState(
-      recipes: <Recipe>[],
-      targetServings: 2.5,
-      topN: 3,
-      trustedSites: List<String>.from(defaultTrustedSites),
-      mealPlan: MealPlanWeek(
-        entries: const <MealPlanEntry>[
-          MealPlanEntry(weekday: WeekdayDe.montag),
-          MealPlanEntry(weekday: WeekdayDe.dienstag),
-          MealPlanEntry(weekday: WeekdayDe.mittwoch),
-          MealPlanEntry(weekday: WeekdayDe.donnerstag),
-          MealPlanEntry(weekday: WeekdayDe.freitag),
-          MealPlanEntry(weekday: WeekdayDe.samstag),
-          MealPlanEntry(weekday: WeekdayDe.sonntag),
-        ],
-      ),
-    );
-  }
+  static const String _recipesKey = 'kondate_recipes_json';
+  static const String _mealPlanKey = 'kondate_meal_plan_json';
+  static const String _targetServingsKey = 'kondate_target_servings';
+  static const String _trustedSitesKey = 'kondate_trusted_sites';
+  static const String _topNKey = 'kondate_top_n';
 
-  KondateAppState copyWith({
-    List<Recipe>? recipes,
-    double? targetServings,
-    int? topN,
-    List<String>? trustedSites,
-    MealPlanWeek? mealPlan,
-  }) {
-    return KondateAppState(
-      recipes: recipes ?? this.recipes,
-      targetServings: targetServings ?? this.targetServings,
-      topN: topN ?? this.topN,
-      trustedSites: trustedSites ?? this.trustedSites,
-      mealPlan: mealPlan ?? this.mealPlan,
+  static KondateAppState initial() {
+    return const KondateAppState(
+      recipes: <Recipe>[],
+      mealPlan: MealPlanWeek(entries: <MealPlanEntry>[]),
+      targetServings: 2.5,
+      trustedSites: <String>[
+        'chefkoch.de',
+        'springlane.de',
+        'eatsmarter.de',
+      ],
+      topN: 3,
     );
   }
 
   static Future<KondateAppState> load() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    double targetServings = 2.5;
-    int topN = 3;
-    List<String> trustedSites = List<String>.from(defaultTrustedSites);
-    final List<Recipe> recipes = <Recipe>[];
-    MealPlanWeek mealPlan = KondateAppState.initial().mealPlan;
+    final String? recipesJson = prefs.getString(_recipesKey);
+    final String? mealPlanJson = prefs.getString(_mealPlanKey);
+    final double targetServings =
+        prefs.getDouble(_targetServingsKey) ?? initial().targetServings;
+    final List<String> trustedSites =
+        prefs.getStringList(_trustedSitesKey) ?? initial().trustedSites;
+    final int topN = prefs.getInt(_topNKey) ?? initial().topN;
 
-    final double? savedServings = prefs.getDouble(servingsPrefsKey);
-    if (savedServings != null && savedServings > 0) {
-      targetServings = savedServings;
-    }
-
-    final int? savedTopN = prefs.getInt(topNPrefsKey);
-    if (savedTopN != null && savedTopN > 0) {
-      topN = savedTopN;
-    }
-
-    final List<String>? savedSites = prefs.getStringList(trustedSitesPrefsKey);
-    if (savedSites != null && savedSites.isNotEmpty) {
-      trustedSites = savedSites;
-    }
-
-    final String? recipesRaw = prefs.getString(recipesPrefsKey);
-    if (recipesRaw != null && recipesRaw.isNotEmpty) {
-      final List<dynamic> decoded = jsonDecode(recipesRaw) as List<dynamic>;
-      recipes.addAll(
-        decoded
-            .whereType<Map<String, dynamic>>()
-            .map(_recipeFromJson)
-            .toList(),
-      );
-    }
-
-    final String? mealPlanRaw = prefs.getString(mealPlanPrefsKey);
-    if (mealPlanRaw != null && mealPlanRaw.isNotEmpty) {
-      final List<dynamic> decoded = jsonDecode(mealPlanRaw) as List<dynamic>;
-      final List<MealPlanEntry> entries = decoded
-          .whereType<Map<String, dynamic>>()
-          .map(_mealPlanEntryFromJson)
+    List<Recipe> recipes = <Recipe>[];
+    if (recipesJson != null && recipesJson.isNotEmpty) {
+      final List<dynamic> decoded = jsonDecode(recipesJson) as List<dynamic>;
+      recipes = decoded
+          .map((dynamic e) => _recipeFromMap(e as Map<String, dynamic>))
           .toList();
-      mealPlan = MealPlanWeek(entries: entries);
+    }
+
+    MealPlanWeek mealPlan = const MealPlanWeek(entries: <MealPlanEntry>[]);
+    if (mealPlanJson != null && mealPlanJson.isNotEmpty) {
+      final Map<String, dynamic> decoded =
+          jsonDecode(mealPlanJson) as Map<String, dynamic>;
+      mealPlan = _mealPlanFromMap(decoded);
     }
 
     return KondateAppState(
       recipes: recipes,
-      targetServings: targetServings,
-      topN: topN,
-      trustedSites: trustedSites,
       mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
     );
   }
 
   Future<void> saveAll() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    await prefs.setDouble(servingsPrefsKey, targetServings);
-    await prefs.setInt(topNPrefsKey, topN);
-    await prefs.setStringList(trustedSitesPrefsKey, trustedSites);
-
-    final String recipesEncoded =
-        jsonEncode(recipes.map(_recipeToJson).toList());
-    await prefs.setString(recipesPrefsKey, recipesEncoded);
-
-    final String mealPlanEncoded =
-        jsonEncode(mealPlan.entries.map(_mealPlanEntryToJson).toList());
-    await prefs.setString(mealPlanPrefsKey, mealPlanEncoded);
-  }
-
-  Recipe? findRecipeById(String id) {
-    for (final Recipe recipe in recipes) {
-      if (recipe.id == id) return recipe;
-    }
-    return null;
-  }
-
-  List<Recipe> selectedMealPlanRecipes() {
-    final List<Recipe> result = <Recipe>[];
-
-    for (final MealPlanEntry entry in mealPlan.entries) {
-      final String? recipeId = entry.recipeId;
-      if (recipeId == null) continue;
-
-      final Recipe? recipe = findRecipeById(recipeId);
-      if (recipe != null) {
-        result.add(recipe);
-      }
-    }
-
-    return result;
-  }
-
-  KondateAppState incrementServings() {
-    return copyWith(targetServings: targetServings + 0.5);
-  }
-
-  KondateAppState decrementServings() {
-    if (targetServings <= 0.5) return this;
-    return copyWith(targetServings: targetServings - 0.5);
-  }
-
-  KondateAppState incrementTopN() {
-    return copyWith(topN: topN + 1);
-  }
-
-  KondateAppState decrementTopN() {
-    if (topN <= 1) return this;
-    return copyWith(topN: topN - 1);
+    await prefs.setString(
+      _recipesKey,
+      jsonEncode(
+        recipes.map((Recipe r) => _recipeToMap(r)).toList(),
+      ),
+    );
+    await prefs.setString(
+      _mealPlanKey,
+      jsonEncode(_mealPlanToMap(mealPlan)),
+    );
+    await prefs.setDouble(_targetServingsKey, targetServings);
+    await prefs.setStringList(_trustedSitesKey, trustedSites);
+    await prefs.setInt(_topNKey, topN);
   }
 
   KondateAppState addRecipe(Recipe recipe) {
-    return copyWith(recipes: <Recipe>[...recipes, recipe]);
+    return KondateAppState(
+      recipes: <Recipe>[...recipes, recipe],
+      mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
   }
 
   KondateAppState removeRecipeAt(int index) {
-    final List<Recipe> updated = List<Recipe>.from(recipes)..removeAt(index);
-    return copyWith(recipes: updated);
+    final List<Recipe> next = <Recipe>[...recipes]..removeAt(index);
+    return KondateAppState(
+      recipes: next,
+      mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
   }
 
   KondateAppState clearRecipes() {
-    return copyWith(recipes: <Recipe>[]);
+    return KondateAppState(
+      recipes: const <Recipe>[],
+      mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
+  }
+
+  KondateAppState incrementServings() {
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: mealPlan,
+      targetServings: targetServings + 0.5,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
+  }
+
+  KondateAppState decrementServings() {
+    final double next = targetServings > 0.5 ? targetServings - 0.5 : 0.5;
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: mealPlan,
+      targetServings: next,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
+  }
+
+  KondateAppState incrementTopN() {
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN + 1,
+    );
+  }
+
+  KondateAppState decrementTopN() {
+    final int next = topN > 1 ? topN - 1 : 1;
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: mealPlan,
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: next,
+    );
   }
 
   KondateAppState updateTrustedSites({
     required List<String> sites,
     required int topN,
   }) {
-    return copyWith(
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: mealPlan,
+      targetServings: targetServings,
       trustedSites: sites,
       topN: topN,
     );
@@ -206,98 +183,170 @@ class KondateAppState {
     required String dishIdea,
     required String? recipeId,
   }) {
-    final MealPlanEntry current =
-        mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
-
-    return copyWith(
+    return KondateAppState(
+      recipes: recipes,
       mealPlan: mealPlan.upsert(
-        current.copyWith(
+        MealPlanEntry(
+          weekday: weekday,
           dishIdea: dishIdea,
           recipeId: recipeId,
         ),
       ),
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
     );
   }
 
   KondateAppState clearWeekday(WeekdayDe weekday) {
-    final MealPlanEntry current =
-        mealPlan.entryFor(weekday) ?? MealPlanEntry(weekday: weekday);
+    final List<MealPlanEntry> filtered = mealPlan.entries
+        .where((MealPlanEntry entry) => entry.weekday != weekday)
+        .toList();
 
-    return copyWith(
-      mealPlan: mealPlan.upsert(
-        current.copyWith(
-          dishIdea: '',
-          recipeId: null,
-        ),
-      ),
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: MealPlanWeek(entries: filtered),
+      targetServings: targetServings,
+      trustedSites: trustedSites,
+      topN: topN,
     );
+  }
+
+  Recipe? findRecipeById(String id) {
+    for (final Recipe recipe in recipes) {
+      if (recipe.id == id) return recipe;
+    }
+    return null;
+  }
+
+  List<Recipe> selectedMealPlanRecipes() {
+    final List<Recipe> selected = <Recipe>[];
+
+    for (final MealPlanEntry entry in mealPlan.entries) {
+      final String? recipeId = entry.recipeId;
+      if (recipeId == null) continue;
+
+      final Recipe? recipe = findRecipeById(recipeId);
+      if (recipe != null) {
+        selected.add(recipe);
+      }
+    }
+
+    return selected;
   }
 
   static Future<Recipe> importRecipeFromUrl(String urlText) async {
-    final KondateRecipeImporter importer = KondateRecipeImporter();
-    return importer.importRecipe(
-      url: Uri.parse(urlText),
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-    );
+    final Uri url = Uri.parse(urlText);
+    final HttpClient client = HttpClient();
+
+    try {
+      final HttpClientRequest request =
+          await client.postUrl(Uri.parse('http://127.0.0.1:8000/import'));
+      request.headers.contentType = ContentType.json;
+      request.write(
+        jsonEncode(<String, dynamic>{
+          'url': url.toString(),
+        }),
+      );
+
+      final HttpClientResponse response = await request.close();
+      final String body = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Backend import failed: $body');
+      }
+
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
+
+      final List<String> ingredientLines =
+          (json['ingredientLines'] as List<dynamic>)
+              .map((dynamic e) => e.toString())
+              .toList();
+
+      final List<IngredientLine> ingredients = ingredientLines.map((String raw) {
+        final Quantity? q = QuantityParserDe.parseLeadingQuantity(raw);
+        return IngredientLine(
+          raw: raw,
+          quantity: q,
+          normalizedName: null,
+        );
+      }).toList();
+
+      return Recipe(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: json['title'] as String,
+        sourceUrl: url,
+        defaultServings: (json['servings'] as num?)?.toDouble(),
+        ingredients: ingredients,
+      );
+    } finally {
+      client.close(force: true);
+    }
   }
 
-  static Map<String, dynamic> _recipeToJson(Recipe recipe) {
+  static Map<String, dynamic> _recipeToMap(Recipe recipe) {
     return <String, dynamic>{
       'id': recipe.id,
       'title': recipe.title,
       'sourceUrl': recipe.sourceUrl.toString(),
       'defaultServings': recipe.defaultServings,
-      'ingredients': recipe.ingredients.map(_ingredientLineToJson).toList(),
+      'ingredients': recipe.ingredients.map(_ingredientToMap).toList(),
     };
   }
 
-  static Recipe _recipeFromJson(Map<String, dynamic> json) {
-    final List<dynamic> ingredientsRaw =
-        json['ingredients'] as List<dynamic>? ?? <dynamic>[];
+  static Recipe _recipeFromMap(Map<String, dynamic> map) {
+    final List<dynamic> rawIngredients =
+        (map['ingredients'] as List<dynamic>? ?? const <dynamic>[]);
+
+    final List<IngredientLine> ingredients = rawIngredients
+        .map((dynamic e) => _ingredientFromMap(e as Map<String, dynamic>))
+        .toList();
 
     return Recipe(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      sourceUrl: Uri.parse(
-        json['sourceUrl'] as String? ?? 'https://example.com',
-      ),
-      defaultServings: (json['defaultServings'] as num?)?.toDouble(),
-      ingredients: ingredientsRaw
-          .whereType<Map<String, dynamic>>()
-          .map(_ingredientLineFromJson)
+      id: map['id'] as String,
+      title: map['title'] as String,
+      sourceUrl: Uri.parse(map['sourceUrl'] as String),
+      defaultServings: (map['defaultServings'] as num?)?.toDouble(),
+      ingredients: ingredients,
+    );
+  }
+
+  static Map<String, dynamic> _ingredientToMap(IngredientLine line) {
+    return <String, dynamic>{
+      'raw': line.raw,
+      'normalizedName': line.normalizedName,
+    };
+  }
+
+  static IngredientLine _ingredientFromMap(Map<String, dynamic> map) {
+    final String raw = map['raw'] as String;
+
+    return IngredientLine(
+      raw: raw,
+      quantity: QuantityParserDe.parseLeadingQuantity(raw),
+      normalizedName: map['normalizedName'] as String?,
+    );
+  }
+
+  static Map<String, dynamic> _mealPlanToMap(MealPlanWeek mealPlan) {
+    return <String, dynamic>{
+      'entries': mealPlan.entries.map(_mealPlanEntryToMap).toList(),
+    };
+  }
+
+  static MealPlanWeek _mealPlanFromMap(Map<String, dynamic> map) {
+    final List<dynamic> rawEntries =
+        (map['entries'] as List<dynamic>? ?? const <dynamic>[]);
+
+    return MealPlanWeek(
+      entries: rawEntries
+          .map((dynamic e) => _mealPlanEntryFromMap(e as Map<String, dynamic>))
           .toList(),
     );
   }
 
-  static Map<String, dynamic> _ingredientLineToJson(IngredientLine line) {
-    return <String, dynamic>{
-      'raw': line.raw,
-      'normalizedName': line.normalizedName,
-      'quantity': line.quantity == null
-          ? null
-          : <String, dynamic>{
-              'value': line.quantity!.value,
-              'unit': line.quantity!.unit.name,
-            },
-    };
-  }
-
-  static IngredientLine _ingredientLineFromJson(Map<String, dynamic> json) {
-    final Map<String, dynamic>? q = json['quantity'] as Map<String, dynamic>?;
-
-    return IngredientLine(
-      raw: json['raw'] as String? ?? '',
-      normalizedName: json['normalizedName'] as String?,
-      quantity: q == null
-          ? null
-          : Quantity(
-              (q['value'] as num).toDouble(),
-              _unitFromName(q['unit'] as String?),
-            ),
-    );
-  }
-
-  static Map<String, dynamic> _mealPlanEntryToJson(MealPlanEntry entry) {
+  static Map<String, dynamic> _mealPlanEntryToMap(MealPlanEntry entry) {
     return <String, dynamic>{
       'weekday': entry.weekday.name,
       'dishIdea': entry.dishIdea,
@@ -305,21 +354,11 @@ class KondateAppState {
     };
   }
 
-  static MealPlanEntry _mealPlanEntryFromJson(Map<String, dynamic> json) {
+  static MealPlanEntry _mealPlanEntryFromMap(Map<String, dynamic> map) {
     return MealPlanEntry(
-      weekday: WeekdayDe.values.firstWhere(
-        (WeekdayDe d) => d.name == json['weekday'],
-        orElse: () => WeekdayDe.montag,
-      ),
-      dishIdea: json['dishIdea'] as String?,
-      recipeId: json['recipeId'] as String?,
-    );
-  }
-
-  static Unit _unitFromName(String? name) {
-    return Unit.values.firstWhere(
-      (Unit u) => u.name == name,
-      orElse: () => Unit.unknown,
+      weekday: WeekdayDe.values.byName(map['weekday'] as String),
+      dishIdea: map['dishIdea'] as String?,
+      recipeId: map['recipeId'] as String?,
     );
   }
 }

@@ -21,3 +21,13 @@ class RecipeSearchResult(BaseModel):
 
 class RecipeSearchResponse(BaseModel):
     results: List[RecipeSearchResult]
+
+
+class ImportRecipeRequest(BaseModel):
+    url: str = Field(min_length=1)
+
+
+class ImportRecipeResponse(BaseModel):
+    title: str
+    servings: float | None = None
+    ingredientLines: List[str]
