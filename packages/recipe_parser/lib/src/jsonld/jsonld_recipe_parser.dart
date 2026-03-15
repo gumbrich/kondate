@@ -8,25 +8,24 @@ class JsonLdRecipeParser {
       : extractor = extractor ?? JsonLdExtractor();
 
   ParsedRecipe parseFromHtml(String html) {
-    final blobs = extractor.extractJsonLdObjects(html);
-    final obj = extractor.findRecipeObject(blobs);
+    final List<dynamic> blobs = extractor.extractJsonLdObjects(html);
+    final Map<String, dynamic>? obj = extractor.findRecipeObject(blobs);
+
     if (obj == null) {
       throw Exception('No JSON-LD Recipe found.');
     }
 
-    final title = (obj['name'] as String?)?.trim();
+    final String? title = _readTitle(obj);
     if (title == null || title.isEmpty) {
       throw Exception('Recipe name missing.');
     }
 
-    final ingredients = (obj['recipeIngredient'] as List?)
-            ?.whereType<String>()
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList() ??
-        const <String>[];
+    final List<String> ingredients = _readIngredients(obj);
+    if (ingredients.isEmpty) {
+      throw Exception('Recipe ingredients missing.');
+    }
 
-    final servings = _parseServings(obj['recipeYield']);
+    final double? servings = _parseServings(obj['recipeYield']);
 
     return ParsedRecipe(
       title: title,
@@ -35,18 +34,51 @@ class JsonLdRecipeParser {
     );
   }
 
+  String? _readTitle(Map<String, dynamic> obj) {
+    final dynamic name = obj['name'];
+
+    if (name is String) {
+      final String value = name.trim();
+      return value.isEmpty ? null : value;
+    }
+
+    return null;
+  }
+
+  List<String> _readIngredients(Map<String, dynamic> obj) {
+    final dynamic rawIngredients = obj['recipeIngredient'];
+
+    if (rawIngredients is List) {
+      return rawIngredients
+          .map((dynamic item) => item?.toString().trim() ?? '')
+          .where((String s) => s.isNotEmpty)
+          .toList();
+    }
+
+    return const <String>[];
+  }
+
   double? _parseServings(dynamic recipeYield) {
     String? s;
-    if (recipeYield is String) s = recipeYield;
-    if (recipeYield is List &&
-        recipeYield.isNotEmpty &&
-        recipeYield.first is String) {
-      s = recipeYield.first as String;
+
+    if (recipeYield is String) {
+      s = recipeYield;
+    } else if (recipeYield is num) {
+      return recipeYield.toDouble();
+    } else if (recipeYield is List && recipeYield.isNotEmpty) {
+      final dynamic first = recipeYield.first;
+      if (first is String) {
+        s = first;
+      } else if (first is num) {
+        return first.toDouble();
+      }
     }
+
     if (s == null) return null;
 
-    final m = RegExp(r'(\d+([.,]\d+)?)').firstMatch(s);
+    final RegExpMatch? m = RegExp(r'(\d+([.,]\d+)?)').firstMatch(s);
     if (m == null) return null;
+
     return double.tryParse(m.group(1)!.replaceAll(',', '.'));
   }
 }

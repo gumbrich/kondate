@@ -71,7 +71,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
     return '${weekday.name}_${candidate.openUri}';
   }
 
-  Future<void> _openRecipe(RecipeSuggestionCandidate candidate) async {
+  Future<void> _openRecipeInBrowser(RecipeSuggestionCandidate candidate) async {
     await launchUrl(
       candidate.openUri,
       mode: LaunchMode.externalApplication,
@@ -103,7 +103,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
       if (!mounted) return;
 
       setState(() {
-        _error = e.toString();
+        _error = 'Import failed for ${candidate.openUri}: $e';
       });
     } finally {
       if (mounted) {
@@ -139,11 +139,24 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
           BuildContext context,
           AsyncSnapshot<List<DayRecipeSuggestions>> snapshot,
         ) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final List<DayRecipeSuggestions> suggestions = snapshot.data!;
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Could not load suggestions: ${snapshot.error}',
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            );
+          }
+
+          final List<DayRecipeSuggestions> suggestions =
+              snapshot.data ?? const <DayRecipeSuggestions>[];
 
           if (suggestions.isEmpty) {
             return const Center(
@@ -155,7 +168,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
             padding: const EdgeInsets.all(16),
             children: <Widget>[
               const Text(
-                'Tap a recipe to import it directly. Use the external-link button to inspect it in the browser first.',
+                'Tap a suggestion to import it directly. Use the external-link button only if you want to inspect the page first.',
               ),
               const SizedBox(height: 12),
               if (_error != null)
@@ -213,7 +226,7 @@ class _WeeklySuggestionsScreenState extends State<WeeklySuggestionsScreen> {
                           trailing: IconButton(
                             icon: const Icon(Icons.open_in_new),
                             tooltip: 'Open in browser',
-                            onPressed: () => _openRecipe(candidate),
+                            onPressed: () => _openRecipeInBrowser(candidate),
                           ),
                           onTap: importing
                               ? null

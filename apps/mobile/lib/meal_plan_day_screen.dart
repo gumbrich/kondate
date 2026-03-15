@@ -78,7 +78,8 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
     if (importedRecipe == null) return;
 
     setState(() {
-      final bool alreadyExists = _recipes.any((Recipe r) => r.id == importedRecipe.id);
+      final bool alreadyExists =
+          _recipes.any((Recipe r) => r.id == importedRecipe.id);
       if (!alreadyExists) {
         _recipes.add(importedRecipe);
       }
@@ -135,7 +136,8 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              initialValue: selectedRecipeStillExists ? _selectedRecipeId : null,
+              initialValue:
+                  selectedRecipeStillExists ? _selectedRecipeId : null,
               decoration: const InputDecoration(
                 labelText: 'Recipe',
               ),
@@ -216,129 +218,195 @@ class RecipeSuggestionScreen extends StatefulWidget {
 }
 
 class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
-  final TextEditingController _chosenUrlController = TextEditingController();
-
   bool _importing = false;
   String? _error;
+  String? _importingKey;
+  Recipe? _selectedRecipe;
 
-  Future<void> _openCandidate(RecipeSuggestionCandidate candidate) async {
+  Future<void> _openCandidateInBrowser(
+    RecipeSuggestionCandidate candidate,
+  ) async {
     await launchUrl(
       candidate.openUri,
       mode: LaunchMode.externalApplication,
     );
   }
 
-  Future<void> _importChosenRecipe() async {
-    final String urlText = _chosenUrlController.text.trim();
-    if (urlText.isEmpty) {
-      setState(() {
-        _error = 'Please paste the chosen recipe URL.';
-      });
-      return;
-    }
+  Future<void> _importCandidate(
+    RecipeSuggestionCandidate candidate,
+  ) async {
+    final String key = candidate.openUri.toString();
 
     setState(() {
       _importing = true;
+      _importingKey = key;
       _error = null;
     });
 
     try {
-      final Recipe recipe = await KondateAppState.importRecipeFromUrl(urlText);
+      final Recipe recipe = await KondateAppState.importRecipeFromUrl(
+        candidate.openUri.toString(),
+      );
 
       if (!mounted) return;
-      Navigator.of(context).pop(recipe);
-    } catch (e) {
       setState(() {
-        _error = e.toString();
+        _selectedRecipe = recipe;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Import failed for ${candidate.openUri}: $e';
       });
     } finally {
       if (mounted) {
         setState(() {
           _importing = false;
+          _importingKey = null;
         });
       }
     }
   }
 
-  @override
-  void dispose() {
-    _chosenUrlController.dispose();
-    super.dispose();
+  void _confirmImportedRecipe() {
+    if (_selectedRecipe == null) return;
+    Navigator.of(context).pop(_selectedRecipe);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<RecipeSuggestionCandidate>>(
-      future: widget.recipeSearchProvider.search(
+    return FutureBuilder<RecipeSearchDebugResult>(
+      future: widget.recipeSearchProvider.searchDebug(
         dishIdea: widget.dishIdea,
         trustedSites: widget.trustedSites,
         topN: widget.topN,
       ),
       builder: (
         BuildContext context,
-        AsyncSnapshot<List<RecipeSuggestionCandidate>> snapshot,
+        AsyncSnapshot<RecipeSearchDebugResult> snapshot,
       ) {
-        final bool loading = snapshot.connectionState != ConnectionState.done;
-        final List<RecipeSuggestionCandidate> candidates =
-            snapshot.data ?? const <RecipeSuggestionCandidate>[];
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text('Suggestions: ${widget.dishIdea}'),
+            ),
+            body: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text('Suggestions: ${widget.dishIdea}'),
+            ),
+            body: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Could not load suggestions: ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          );
+        }
+
+        final RecipeSearchDebugResult debug =
+            snapshot.data ??
+                const RecipeSearchDebugResult(
+                  candidates: <RecipeSuggestionCandidate>[],
+                  debugLines: <String>[],
+                );
+
+        final List<RecipeSuggestionCandidate> candidates = debug.candidates;
+        final bool canConfirm = _selectedRecipe != null;
 
         return Scaffold(
           appBar: AppBar(
             title: Text('Suggestions: ${widget.dishIdea}'),
+            actions: <Widget>[
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: canConfirm ? _confirmImportedRecipe : null,
+              ),
+            ],
           ),
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
+            child: ListView(
               children: <Widget>[
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Recipe candidates',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                Text(
+                  'Trusted sites: ${widget.trustedSites.join(', ')}',
                 ),
                 const SizedBox(height: 8),
-                if (loading) const LinearProgressIndicator(),
-                if (!loading && candidates.isEmpty)
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('No trusted sites configured yet.'),
+                const Text(
+                  'Tap a suggestion to import it directly. Use the external-link button only if you want to inspect the page first.',
+                ),
+                const SizedBox(height: 12),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                if (candidates.isEmpty)
+                  Text(
+                    'No recipe results found for "${widget.dishIdea}" on the configured trusted sites.',
                   ),
                 ...candidates.map((RecipeSuggestionCandidate candidate) {
+                  final String key = candidate.openUri.toString();
+                  final bool importing = _importing && _importingKey == key;
+                  final bool selected = _selectedRecipe != null &&
+                      _selectedRecipe!.sourceUrl.toString() ==
+                          candidate.openUri.toString();
+
                   return Card(
                     child: ListTile(
                       title: Text(candidate.title),
-                      subtitle: Text(candidate.subtitle),
-                      trailing: const Icon(Icons.open_in_new),
-                      onTap: () => _openCandidate(candidate),
+                      subtitle: Text(
+                        selected
+                            ? '${candidate.subtitle}\nImported: ${_selectedRecipe!.title}'
+                            : candidate.subtitle,
+                      ),
+                      isThreeLine: selected,
+                      leading: importing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              selected
+                                  ? Icons.check_circle
+                                  : Icons.download,
+                              color: selected ? Colors.green : null,
+                            ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.open_in_new),
+                        tooltip: 'Open in browser',
+                        onPressed: () => _openCandidateInBrowser(candidate),
+                      ),
+                      onTap:
+                          importing ? null : () => _importCandidate(candidate),
                     ),
                   );
                 }),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _chosenUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Chosen recipe URL',
-                    hintText: 'Paste the final recipe URL here',
-                  ),
+                const Text(
+                  'Search debug',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 12),
-                if (_importing) const LinearProgressIndicator(),
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ElevatedButton(
-                    onPressed: _importing ? null : _importChosenRecipe,
-                    child: const Text('Import selected recipe'),
-                  ),
-                ),
+                const SizedBox(height: 8),
+                ...debug.debugLines.map((String line) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '• $line',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }),
               ],
             ),
           ),
