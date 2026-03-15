@@ -221,7 +221,6 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   bool _importing = false;
   String? _error;
   String? _importingKey;
-  Recipe? _selectedRecipe;
 
   Future<void> _openCandidateInBrowser(
     RecipeSuggestionCandidate candidate,
@@ -249,9 +248,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
       );
 
       if (!mounted) return;
-      setState(() {
-        _selectedRecipe = recipe;
-      });
+      Navigator.of(context).pop(recipe);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -265,11 +262,6 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
         });
       }
     }
-  }
-
-  void _confirmImportedRecipe() {
-    if (_selectedRecipe == null) return;
-    Navigator.of(context).pop(_selectedRecipe);
   }
 
   @override
@@ -310,25 +302,17 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
           );
         }
 
-        final RecipeSearchDebugResult debug =
-            snapshot.data ??
-                const RecipeSearchDebugResult(
-                  candidates: <RecipeSuggestionCandidate>[],
-                  debugLines: <String>[],
-                );
+        final RecipeSearchDebugResult debug = snapshot.data ??
+            const RecipeSearchDebugResult(
+              candidates: <RecipeSuggestionCandidate>[],
+              debugLines: <String>[],
+            );
 
         final List<RecipeSuggestionCandidate> candidates = debug.candidates;
-        final bool canConfirm = _selectedRecipe != null;
 
         return Scaffold(
           appBar: AppBar(
             title: Text('Suggestions: ${widget.dishIdea}'),
-            actions: <Widget>[
-              IconButton(
-                icon: const Icon(Icons.check),
-                onPressed: canConfirm ? _confirmImportedRecipe : null,
-              ),
-            ],
           ),
           body: Padding(
             padding: const EdgeInsets.all(16),
@@ -357,31 +341,18 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                 ...candidates.map((RecipeSuggestionCandidate candidate) {
                   final String key = candidate.openUri.toString();
                   final bool importing = _importing && _importingKey == key;
-                  final bool selected = _selectedRecipe != null &&
-                      _selectedRecipe!.sourceUrl.toString() ==
-                          candidate.openUri.toString();
 
                   return Card(
                     child: ListTile(
                       title: Text(candidate.title),
-                      subtitle: Text(
-                        selected
-                            ? '${candidate.subtitle}\nImported: ${_selectedRecipe!.title}'
-                            : candidate.subtitle,
-                      ),
-                      isThreeLine: selected,
+                      subtitle: Text(candidate.subtitle),
                       leading: importing
                           ? const SizedBox(
                               width: 24,
                               height: 24,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Icon(
-                              selected
-                                  ? Icons.check_circle
-                                  : Icons.download,
-                              color: selected ? Colors.green : null,
-                            ),
+                          : const Icon(Icons.download),
                       trailing: IconButton(
                         icon: const Icon(Icons.open_in_new),
                         tooltip: 'Open in browser',
