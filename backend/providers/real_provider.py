@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import httpx
+from fastapi import HTTPException
 
 from models import RecipeSearchRequest, RecipeSearchResponse, RecipeSearchResult
 from search_provider import SearchProvider
+from providers.jsonld_validator import JsonLdRecipeValidator
 
 
 class RealSearchProvider(SearchProvider):
@@ -17,6 +18,7 @@ class RealSearchProvider(SearchProvider):
                 "SERPAPI_API_KEY is not set. "
                 "Set it before starting the backend."
             )
+        self.validator = JsonLdRecipeValidator()
 
     def search(self, request: RecipeSearchRequest) -> RecipeSearchResponse:
         results: list[RecipeSearchResult] = []
@@ -50,19 +52,36 @@ class RealSearchProvider(SearchProvider):
     ) -> list[RecipeSearchResult]:
         query = f"site:{domain} {dish_idea} rezept"
 
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(
-                "https://serpapi.com/search.json",
-                params={
-                    "engine": "google",
-                    "q": query,
-                    "num": max(wanted, 3),
-                    "api_key": self.api_key,
-                },
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(
+                    "https://serpapi.com/search.json",
+                    params={
+                        "engine": "google",
+                        "q": query,
+                        "num": max(wanted * 3, 6),
+                        "api_key": self.api_key,
+                    },
+                )
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Search backend request failed: {e}",
             )
-            response.raise_for_status()
-            payload = response.json()
 
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=500,
+                detail="SERPAPI_API_KEY is invalid or unauthorized.",
+            )
+
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Search backend returned status {response.status_code}.",
+            )
+
+        payload = response.json()
         organic_results = payload.get("organic_results", [])
         out: list[RecipeSearchResult] = []
 
@@ -76,6 +95,8 @@ class RealSearchProvider(SearchProvider):
             if not self._matches_domain(link, domain):
                 continue
             if self._is_clearly_non_recipe(link):
+                continue
+            if not self.validator.has_recipe_jsonld(link):
                 continue
 
             out.append(
