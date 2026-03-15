@@ -23,12 +23,22 @@ class RecipeSuggestionCandidate {
   ) {
     return RecipeSuggestionCandidate(
       title: result.title,
-      subtitle: result.subtitle ?? 'Öffne das Rezept im Browser',
+      subtitle: result.subtitle ?? 'Open recipe in browser',
       domain: result.domain,
       openUri: Uri.parse(result.url),
       score: result.score,
     );
   }
+}
+
+class RecipeSearchDebugResult {
+  final List<RecipeSuggestionCandidate> candidates;
+  final List<String> debugLines;
+
+  const RecipeSearchDebugResult({
+    required this.candidates,
+    required this.debugLines,
+  });
 }
 
 abstract class RecipeSearchProvider {
@@ -37,16 +47,20 @@ abstract class RecipeSearchProvider {
     required List<String> trustedSites,
     required int topN,
   });
+
+  Future<RecipeSearchDebugResult> searchDebug({
+    required String dishIdea,
+    required List<String> trustedSites,
+    required int topN,
+  });
 }
 
-/// Kept under the old name so main.dart does not need to change.
-/// This now performs real search against DuckDuckGo HTML results
-/// and falls back to plain site-search links if needed.
-///
-/// Note: this implementation is intended for desktop/mobile.
-/// It uses dart:io and is not suitable for Flutter Web.
 class MockRecipeSearchProvider implements RecipeSearchProvider {
+  // Keep the old name so the rest of the app does not need changes.
+  // It now calls the local backend.
   const MockRecipeSearchProvider();
+
+  static final Uri _baseUri = Uri.parse('http://127.0.0.1:8000');
 
   @override
   Future<List<RecipeSuggestionCandidate>> search({
@@ -54,250 +68,71 @@ class MockRecipeSearchProvider implements RecipeSearchProvider {
     required List<String> trustedSites,
     required int topN,
   }) async {
-    final RecipeSearchRequest request = RecipeSearchRequest(
+    final RecipeSearchDebugResult debug = await searchDebug(
       dishIdea: dishIdea,
       trustedSites: trustedSites,
       topN: topN,
     );
-
-    try {
-      final RecipeSearchResponse response = await _realSearch(request);
-      if (response.results.isNotEmpty) {
-        return response.results
-            .map(RecipeSuggestionCandidate.fromSearchResult)
-            .toList();
-      }
-    } catch (_) {
-      // fall through to fallback
-    }
-
-    final RecipeSearchResponse fallback = _fallbackSearch(request);
-    return fallback.results
-        .map(RecipeSuggestionCandidate.fromSearchResult)
-        .toList();
+    return debug.candidates;
   }
 
-  Future<RecipeSearchResponse> _realSearch(RecipeSearchRequest request) async {
-    final List<RecipeSearchResult> results = <RecipeSearchResult>[];
-    final Set<String> seenUrls = <String>{};
-
-    int rank = 0;
-
-    for (final String domain in request.trustedSites) {
-      if (results.length >= request.topN) break;
-
-      final List<RecipeSearchResult> domainResults = await _searchSingleDomain(
-        dishIdea: request.dishIdea,
-        domain: domain,
-        wanted: request.topN - results.length,
-      );
-
-      for (final RecipeSearchResult result in domainResults) {
-        if (seenUrls.add(result.url)) {
-          rank += 1;
-          results.add(
-            RecipeSearchResult(
-              title: result.title,
-              domain: result.domain,
-              url: result.url,
-              subtitle: result.subtitle,
-              score: (request.topN - rank + 1).toDouble(),
-            ),
-          );
-        }
-
-        if (results.length >= request.topN) {
-          break;
-        }
-      }
-    }
-
-    return RecipeSearchResponse(results: results);
-  }
-
-  Future<List<RecipeSearchResult>> _searchSingleDomain({
+  @override
+  Future<RecipeSearchDebugResult> searchDebug({
     required String dishIdea,
-    required String domain,
-    required int wanted,
+    required List<String> trustedSites,
+    required int topN,
   }) async {
-    final String query = 'site:$domain "$dishIdea" rezept';
-    final Uri uri = Uri.https(
-      'html.duckduckgo.com',
-      '/html/',
-      <String, String>{'q': query},
-    );
-
-    final String html = await _fetch(uri);
-    final List<_HtmlSearchResult> parsed = _parseDuckDuckGoResults(html);
-
-    final List<RecipeSearchResult> results = <RecipeSearchResult>[];
-
-    for (final _HtmlSearchResult item in parsed) {
-      final Uri? targetUri = _extractTargetUri(item.href);
-      if (targetUri == null) continue;
-
-      final String host = targetUri.host.toLowerCase();
-      if (!_hostMatchesDomain(host, domain.toLowerCase())) continue;
-
-      final String title = _cleanTitle(item.title);
-      if (title.isEmpty) continue;
-
-      results.add(
-        RecipeSearchResult(
-          title: title,
-          domain: domain,
-          url: targetUri.toString(),
-          subtitle: 'Suchtreffer von $domain',
-          score: null,
-        ),
-      );
-
-      if (results.length >= wanted) {
-        break;
-      }
-    }
-
-    return results;
-  }
-
-  Future<String> _fetch(Uri uri) async {
     final HttpClient client = HttpClient();
+
     try {
-      final HttpClientRequest request = await client.getUrl(uri);
-      request.headers.set(
-        HttpHeaders.userAgentHeader,
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/122.0.0.0 Safari/537.36',
-      );
-      request.headers.set(
-        HttpHeaders.acceptHeader,
-        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      final HttpClientRequest request =
+          await client.postUrl(_baseUri.resolve('/search'));
+      request.headers.contentType = ContentType.json;
+      request.write(
+        jsonEncode(<String, dynamic>{
+          'dishIdea': dishIdea,
+          'trustedSites': trustedSites,
+          'topN': topN,
+        }),
       );
 
       final HttpClientResponse response = await request.close();
       final String body = await response.transform(utf8.decoder).join();
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException(
-          'Search request failed with ${response.statusCode}',
-          uri: uri,
+        return RecipeSearchDebugResult(
+          candidates: const <RecipeSuggestionCandidate>[],
+          debugLines: <String>[
+            'backend returned status ${response.statusCode}',
+            body,
+          ],
         );
       }
 
-      return body;
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
+      final RecipeSearchResponse parsed = RecipeSearchResponse.fromJson(json);
+
+      return RecipeSearchDebugResult(
+        candidates: parsed.results
+            .map(RecipeSuggestionCandidate.fromSearchResult)
+            .toList(),
+        debugLines: <String>[
+          'backend ok',
+          'received ${parsed.results.length} direct results',
+        ],
+      );
+    } catch (e) {
+      return RecipeSearchDebugResult(
+        candidates: const <RecipeSuggestionCandidate>[],
+        debugLines: <String>[
+          'backend request failed',
+          e.toString(),
+        ],
+      );
     } finally {
       client.close(force: true);
     }
-  }
-
-  List<_HtmlSearchResult> _parseDuckDuckGoResults(String html) {
-    final RegExp anchorPattern = RegExp(
-      r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-      caseSensitive: false,
-      dotAll: true,
-    );
-
-    final List<_HtmlSearchResult> results = <_HtmlSearchResult>[];
-
-    for (final RegExpMatch match in anchorPattern.allMatches(html)) {
-      final String href = match.group(1) ?? '';
-      final String rawTitle = match.group(2) ?? '';
-
-      if (href.isEmpty || rawTitle.isEmpty) continue;
-
-      results.add(
-        _HtmlSearchResult(
-          href: _decodeHtmlEntities(href),
-          title: _stripTags(_decodeHtmlEntities(rawTitle)).trim(),
-        ),
-      );
-    }
-
-    return results;
-  }
-
-  Uri? _extractTargetUri(String href) {
-    if (href.isEmpty) return null;
-
-    final String normalized = href.startsWith('//') ? 'https:$href' : href;
-    final Uri? parsed = Uri.tryParse(normalized);
-    if (parsed == null) return null;
-
-    if (parsed.host.contains('duckduckgo.com')) {
-      final String? uddg = parsed.queryParameters['uddg'];
-      if (uddg != null && uddg.isNotEmpty) {
-        final Uri? decoded = Uri.tryParse(Uri.decodeComponent(uddg));
-        if (decoded != null) {
-          return decoded;
-        }
-      }
-    }
-
-    return parsed;
-  }
-
-  bool _hostMatchesDomain(String host, String domain) {
-    return host == domain || host.endsWith('.$domain');
-  }
-
-  String _cleanTitle(String title) {
-    return title.replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
-  String _stripTags(String input) {
-    return input.replaceAll(RegExp(r'<[^>]+>'), '');
-  }
-
-  String _decodeHtmlEntities(String input) {
-    return input
-        .replaceAll('&amp;', '&')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&apos;', "'")
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&uuml;', 'ü')
-        .replaceAll('&Uuml;', 'Ü')
-        .replaceAll('&ouml;', 'ö')
-        .replaceAll('&Ouml;', 'Ö')
-        .replaceAll('&auml;', 'ä')
-        .replaceAll('&Auml;', 'Ä')
-        .replaceAll('&szlig;', 'ß');
-  }
-
-  RecipeSearchResponse _fallbackSearch(RecipeSearchRequest request) {
-    final List<RecipeSearchResult> results = <RecipeSearchResult>[];
-
-    int rank = 0;
-    for (final String domain in request.trustedSites.take(request.topN)) {
-      rank += 1;
-
-      final Uri searchUri = Uri.https(
-        'www.google.com',
-        '/search',
-        <String, String>{
-          'q': 'site:$domain ${request.dishIdea} rezept',
-        },
-      );
-
-      results.add(
-        RecipeSearchResult(
-          title: '${_titleCase(request.dishIdea)} auf $domain',
-          domain: domain,
-          url: searchUri.toString(),
-          subtitle: 'Fallback-Suche auf $domain',
-          score: (request.topN - rank + 1).toDouble(),
-        ),
-      );
-    }
-
-    return RecipeSearchResponse(results: results);
-  }
-
-  String _titleCase(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
   }
 }
 
@@ -314,26 +149,71 @@ class HttpRecipeSearchProvider implements RecipeSearchProvider {
     required List<String> trustedSites,
     required int topN,
   }) async {
-    final RecipeSearchRequest request = RecipeSearchRequest(
+    final RecipeSearchDebugResult debug = await searchDebug(
       dishIdea: dishIdea,
       trustedSites: trustedSites,
       topN: topN,
     );
-
-    throw UnimplementedError(
-      'Backend search not wired yet. Later this will POST '
-      '${request.toJson()} to $baseUri/search and parse a '
-      'RecipeSearchResponse.',
-    );
+    return debug.candidates;
   }
-}
 
-class _HtmlSearchResult {
-  final String href;
-  final String title;
+  @override
+  Future<RecipeSearchDebugResult> searchDebug({
+    required String dishIdea,
+    required List<String> trustedSites,
+    required int topN,
+  }) async {
+    final HttpClient client = HttpClient();
 
-  const _HtmlSearchResult({
-    required this.href,
-    required this.title,
-  });
+    try {
+      final HttpClientRequest request = await client.postUrl(
+        baseUri.resolve('/search'),
+      );
+      request.headers.contentType = ContentType.json;
+      request.write(
+        jsonEncode(<String, dynamic>{
+          'dishIdea': dishIdea,
+          'trustedSites': trustedSites,
+          'topN': topN,
+        }),
+      );
+
+      final HttpClientResponse response = await request.close();
+      final String body = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return RecipeSearchDebugResult(
+          candidates: const <RecipeSuggestionCandidate>[],
+          debugLines: <String>[
+            'backend returned status ${response.statusCode}',
+            body,
+          ],
+        );
+      }
+
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
+      final RecipeSearchResponse parsed = RecipeSearchResponse.fromJson(json);
+
+      return RecipeSearchDebugResult(
+        candidates: parsed.results
+            .map(RecipeSuggestionCandidate.fromSearchResult)
+            .toList(),
+        debugLines: <String>[
+          'backend ok',
+          'received ${parsed.results.length} direct results',
+        ],
+      );
+    } catch (e) {
+      return RecipeSearchDebugResult(
+        candidates: const <RecipeSuggestionCandidate>[],
+        debugLines: <String>[
+          'backend request failed',
+          e.toString(),
+        ],
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
 }
