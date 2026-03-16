@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import random
 import string
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +25,12 @@ class HouseholdStore:
         while any(h["joinCode"] == join_code for h in data.values()):
             join_code = self._generate_code()
 
+        now = self._now_iso()
+
         data[household_id] = {
             "householdId": household_id,
             "joinCode": join_code,
+            "updatedAt": now,
             "state": {
                 "recipes": [],
                 "mealPlan": {"entries": []},
@@ -56,14 +60,24 @@ class HouseholdStore:
         household = data.get(household_id)
         if household is None:
             return None
-        return household["state"]
+
+        if "updatedAt" not in household:
+            household["updatedAt"] = self._now_iso()
+            self._write(data)
+
+        return {
+            "updatedAt": household["updatedAt"],
+            "state": household["state"],
+        }
 
     def set_state(self, household_id: str, state: dict[str, Any]) -> bool:
         data = self._read()
         household = data.get(household_id)
         if household is None:
             return False
+
         household["state"] = state
+        household["updatedAt"] = self._now_iso()
         self._write(data)
         return True
 
@@ -81,3 +95,6 @@ class HouseholdStore:
 
     def _generate_code(self) -> str:
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+    def _now_iso(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
