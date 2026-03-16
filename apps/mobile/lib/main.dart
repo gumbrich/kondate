@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_state.dart';
 import 'household_api.dart';
+import 'household_local_store.dart';
 import 'household_screen.dart';
 import 'household_sync_provider.dart';
 import 'manual_recipe_screen.dart';
@@ -48,10 +49,13 @@ class _KondateHomeState extends State<KondateHome> {
   );
 
   final HouseholdApi _householdApi = HouseholdApi();
+  final HouseholdLocalStore _householdLocalStore = HouseholdLocalStore();
   final TextEditingController _urlController = TextEditingController();
 
   bool _loading = false;
   bool _dataLoaded = false;
+  bool _syncingHousehold = false;
+
   String? _error;
   String? _householdId;
   String? _joinCode;
@@ -67,12 +71,21 @@ class _KondateHomeState extends State<KondateHome> {
   Future<void> _loadState() async {
     try {
       final KondateAppState state = await KondateAppState.load();
+      final StoredHouseholdInfo? household = await _householdLocalStore.load();
+
       if (!mounted) return;
+
       setState(() {
         _appState = state;
+        _householdId = household?.householdId;
+        _joinCode = household?.joinCode;
         _dataLoaded = true;
         _error = null;
       });
+
+      if (_householdId != null) {
+        await _loadFromHousehold(showLoader: false);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -84,6 +97,33 @@ class _KondateHomeState extends State<KondateHome> {
 
   Future<void> _persistState() async {
     await _appState.saveAll();
+    await _autoSyncToHousehold();
+  }
+
+  Future<void> _autoSyncToHousehold() async {
+    if (_householdId == null) return;
+
+    try {
+      if (mounted) {
+        setState(() {
+          _syncingHousehold = true;
+        });
+      }
+
+      await _householdApi.saveState(_householdId!, _appState.toMap());
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Automatic household sync failed: $e';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _syncingHousehold = false;
+        });
+      }
+    }
   }
 
   Future<void> _openHouseholdScreen() async {
@@ -95,13 +135,32 @@ class _KondateHomeState extends State<KondateHome> {
 
     if (info == null) return;
 
+    await _householdLocalStore.save(
+      householdId: info.householdId,
+      joinCode: info.joinCode,
+    );
+
+    if (!mounted) return;
     setState(() {
       _householdId = info.householdId;
       _joinCode = info.joinCode;
+      _error = null;
+    });
+
+    await _loadFromHousehold(showLoader: true);
+  }
+
+  Future<void> _disconnectHousehold() async {
+    await _householdLocalStore.clear();
+
+    setState(() {
+      _householdId = null;
+      _joinCode = null;
+      _error = null;
     });
   }
 
-  Future<void> _loadFromHousehold() async {
+  Future<void> _loadFromHousehold({bool showLoader = true}) async {
     if (_householdId == null) {
       setState(() {
         _error = 'No household connected yet.';
@@ -109,10 +168,16 @@ class _KondateHomeState extends State<KondateHome> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (showLoader) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _error = null;
+      });
+    }
 
     try {
       final Map<String, dynamic> state =
@@ -124,15 +189,18 @@ class _KondateHomeState extends State<KondateHome> {
         _appState = KondateAppState.fromMap(state);
       });
 
-      await _persistState();
+      await _appState.saveAll();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Could not load household state: $e';
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (showLoader && mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -493,8 +561,29 @@ class _KondateHomeState extends State<KondateHome> {
                                 onPressed: _loading ? null : _saveToHousehold,
                                 child: const Text('Save household'),
                               ),
+                              OutlinedButton(
+                                onPressed:
+                                    _loading ? null : _disconnectHousehold,
+                                child: const Text('Disconnect'),
+                              ),
                             ],
                           ),
+                          if (_syncingHousehold) ...<Widget>[
+                            const SizedBox(height: 8),
+                            const Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Syncing household...'),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
