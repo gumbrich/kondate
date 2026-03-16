@@ -12,6 +12,7 @@ import 'recipe_list_section.dart';
 import 'recipe_search_provider.dart';
 import 'shopping_list_screen.dart';
 import 'sync_debug_screen.dart';
+import 'sync_status.dart';
 import 'trusted_sites_screen.dart';
 import 'weekly_plan_section.dart';
 import 'weekly_suggestion_service.dart';
@@ -59,6 +60,7 @@ class _KondateHomeState extends State<KondateHome> {
   String? _error;
   String? _householdId;
   String? _joinCode;
+  SyncStatus _syncStatus = const SyncStatus.initial();
 
   KondateAppState _appState = KondateAppState.initial();
 
@@ -111,10 +113,17 @@ class _KondateHomeState extends State<KondateHome> {
       }
 
       await _householdApi.saveState(_householdId!, _appState.toMap());
+
+      if (mounted) {
+        setState(() {
+          _syncStatus = _syncStatus.pushedNow();
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = 'Automatic household sync failed: $e';
+          _syncStatus = _syncStatus.withError(e.toString());
         });
       }
     } finally {
@@ -157,6 +166,7 @@ class _KondateHomeState extends State<KondateHome> {
       _householdId = null;
       _joinCode = null;
       _error = null;
+      _syncStatus = const SyncStatus.initial();
     });
   }
 
@@ -187,6 +197,7 @@ class _KondateHomeState extends State<KondateHome> {
 
       setState(() {
         _appState = KondateAppState.fromMap(state);
+        _syncStatus = _syncStatus.pulledNow();
       });
 
       await _appState.saveAll();
@@ -194,6 +205,7 @@ class _KondateHomeState extends State<KondateHome> {
       if (!mounted) return;
       setState(() {
         _error = 'Could not load household state: $e';
+        _syncStatus = _syncStatus.withError(e.toString());
       });
     } finally {
       if (showLoader && mounted) {
@@ -202,6 +214,10 @@ class _KondateHomeState extends State<KondateHome> {
         });
       }
     }
+  }
+
+  Future<void> _refreshHousehold() async {
+    await _loadFromHousehold(showLoader: true);
   }
 
   Future<void> _saveToHousehold() async {
@@ -219,9 +235,13 @@ class _KondateHomeState extends State<KondateHome> {
 
     try {
       await _householdApi.saveState(_householdId!, _appState.toMap());
+      setState(() {
+        _syncStatus = _syncStatus.pushedNow();
+      });
     } catch (e) {
       setState(() {
         _error = 'Could not save household state: $e';
+        _syncStatus = _syncStatus.withError(e.toString());
       });
     } finally {
       setState(() {
@@ -490,6 +510,26 @@ class _KondateHomeState extends State<KondateHome> {
     }
   }
 
+  String _formatSyncStatus() {
+    final List<String> parts = <String>[];
+
+    if (_syncStatus.lastPulledAt != null) {
+      parts.add('Pulled ${_syncStatus.lastPulledAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPulledAt!.minute.toString().padLeft(2, '0')}');
+    }
+    if (_syncStatus.lastPushedAt != null) {
+      parts.add('Pushed ${_syncStatus.lastPushedAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPushedAt!.minute.toString().padLeft(2, '0')}');
+    }
+    if (_syncStatus.lastError != null) {
+      parts.add('Last sync error');
+    }
+
+    if (parts.isEmpty) {
+      return 'No sync yet';
+    }
+
+    return parts.join(' • ');
+  }
+
   @override
   void dispose() {
     _urlController.dispose();
@@ -506,6 +546,12 @@ class _KondateHomeState extends State<KondateHome> {
       appBar: AppBar(
         title: const Text('Kondate – MVP'),
         actions: <Widget>[
+          if (_householdId != null)
+            IconButton(
+              tooltip: 'Refresh household',
+              icon: const Icon(Icons.refresh),
+              onPressed: _loading ? null : _refreshHousehold,
+            ),
           IconButton(
             tooltip: 'Household',
             icon: const Icon(Icons.group),
@@ -548,6 +594,11 @@ class _KondateHomeState extends State<KondateHome> {
                         children: <Widget>[
                           Text('Household: $_householdId'),
                           if (_joinCode != null) Text('Join code: $_joinCode'),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatSyncStatus(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 12,
