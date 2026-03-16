@@ -74,6 +74,38 @@ class KondateAppState {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'recipes': recipes.map((Recipe r) => _recipeToMap(r)).toList(),
+      'mealPlan': _mealPlanToMap(mealPlan),
+      'targetServings': targetServings,
+      'trustedSites': trustedSites,
+      'topN': topN,
+    };
+  }
+
+  static KondateAppState fromMap(Map<String, dynamic> map) {
+    final List<dynamic> rawRecipes =
+        (map['recipes'] as List<dynamic>? ?? const <dynamic>[]);
+    final List<Recipe> recipes = rawRecipes
+        .map((dynamic e) => _recipeFromMap(e as Map<String, dynamic>))
+        .toList();
+
+    final Map<String, dynamic> rawMealPlan =
+        (map['mealPlan'] as Map<String, dynamic>? ??
+            <String, dynamic>{'entries': <dynamic>[]});
+
+    return KondateAppState(
+      recipes: recipes,
+      mealPlan: _mealPlanFromMap(rawMealPlan),
+      targetServings: (map['targetServings'] as num?)?.toDouble() ?? 2.5,
+      trustedSites: (map['trustedSites'] as List<dynamic>? ?? const <dynamic>[])
+          .map((dynamic e) => e.toString())
+          .toList(),
+      topN: (map['topN'] as num?)?.toInt() ?? 3,
+    );
+  }
+
   Future<void> saveAll() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 

@@ -2,6 +2,8 @@ import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'household_api.dart';
+import 'household_screen.dart';
 import 'household_sync_provider.dart';
 import 'manual_recipe_screen.dart';
 import 'meal_plan_day_screen.dart';
@@ -45,11 +47,15 @@ class _KondateHomeState extends State<KondateHome> {
     recipeSearchProvider: _recipeSearchProvider,
   );
 
+  final HouseholdApi _householdApi = HouseholdApi();
   final TextEditingController _urlController = TextEditingController();
 
   bool _loading = false;
   bool _dataLoaded = false;
   String? _error;
+  String? _householdId;
+  String? _joinCode;
+
   KondateAppState _appState = KondateAppState.initial();
 
   @override
@@ -78,6 +84,82 @@ class _KondateHomeState extends State<KondateHome> {
 
   Future<void> _persistState() async {
     await _appState.saveAll();
+  }
+
+  Future<void> _openHouseholdScreen() async {
+    final HouseholdInfo? info = await Navigator.of(context).push<HouseholdInfo>(
+      MaterialPageRoute(
+        builder: (_) => const HouseholdScreen(),
+      ),
+    );
+
+    if (info == null) return;
+
+    setState(() {
+      _householdId = info.householdId;
+      _joinCode = info.joinCode;
+    });
+  }
+
+  Future<void> _loadFromHousehold() async {
+    if (_householdId == null) {
+      setState(() {
+        _error = 'No household connected yet.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final Map<String, dynamic> state =
+          await _householdApi.loadState(_householdId!);
+
+      if (!mounted) return;
+
+      setState(() {
+        _appState = KondateAppState.fromMap(state);
+      });
+
+      await _persistState();
+    } catch (e) {
+      setState(() {
+        _error = 'Could not load household state: $e';
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _saveToHousehold() async {
+    if (_householdId == null) {
+      setState(() {
+        _error = 'No household connected yet.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await _householdApi.saveState(_householdId!, _appState.toMap());
+    } catch (e) {
+      setState(() {
+        _error = 'Could not save household state: $e';
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _incrementServings() async {
@@ -357,6 +439,11 @@ class _KondateHomeState extends State<KondateHome> {
         title: const Text('Kondate – MVP'),
         actions: <Widget>[
           IconButton(
+            tooltip: 'Household',
+            icon: const Icon(Icons.group),
+            onPressed: _openHouseholdScreen,
+          ),
+          IconButton(
             tooltip: 'Sync debug',
             icon: const Icon(Icons.cloud_sync),
             onPressed: _openSyncDebugScreen,
@@ -379,6 +466,38 @@ class _KondateHomeState extends State<KondateHome> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: <Widget>[
+                  if (_householdId != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.black12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Household: $_householdId'),
+                          if (_joinCode != null) Text('Join code: $_joinCode'),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              ElevatedButton(
+                                onPressed: _loading ? null : _loadFromHousehold,
+                                child: const Text('Load household'),
+                              ),
+                              ElevatedButton(
+                                onPressed: _loading ? null : _saveToHousehold,
+                                child: const Text('Save household'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   TextField(
                     controller: _urlController,
                     decoration: const InputDecoration(

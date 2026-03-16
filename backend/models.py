@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List
 
 from pydantic import BaseModel, Field
 
@@ -31,3 +31,25 @@ class ImportRecipeResponse(BaseModel):
     title: str
     servings: float | None = None
     ingredientLines: List[str]
+
+
+class CreateHouseholdResponse(BaseModel):
+    householdId: str
+    joinCode: str
+
+
+class JoinHouseholdRequest(BaseModel):
+    joinCode: str = Field(min_length=1)
+
+
+class JoinHouseholdResponse(BaseModel):
+    householdId: str
+    joinCode: str
+
+
+class HouseholdStateResponse(BaseModel):
+    state: dict[str, Any]
+
+
+class UpdateHouseholdStateRequest(BaseModel):
+    state: dict[str, Any]
