@@ -190,14 +190,16 @@ class _KondateHomeState extends State<KondateHome> {
     }
 
     try {
-      final Map<String, dynamic> state =
+      final HouseholdStatePayload payload =
           await _householdApi.loadState(_householdId!);
 
       if (!mounted) return;
 
       setState(() {
-        _appState = KondateAppState.fromMap(state);
-        _syncStatus = _syncStatus.pulledNow();
+        _appState = KondateAppState.fromMap(payload.state);
+        _syncStatus = _syncStatus.pulledNow(
+          remoteUpdatedAt: payload.updatedAt,
+        );
       });
 
       await _appState.saveAll();
@@ -514,10 +516,17 @@ class _KondateHomeState extends State<KondateHome> {
     final List<String> parts = <String>[];
 
     if (_syncStatus.lastPulledAt != null) {
-      parts.add('Pulled ${_syncStatus.lastPulledAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPulledAt!.minute.toString().padLeft(2, '0')}');
+      parts.add(
+        'Pulled ${_syncStatus.lastPulledAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPulledAt!.minute.toString().padLeft(2, '0')}',
+      );
     }
     if (_syncStatus.lastPushedAt != null) {
-      parts.add('Pushed ${_syncStatus.lastPushedAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPushedAt!.minute.toString().padLeft(2, '0')}');
+      parts.add(
+        'Pushed ${_syncStatus.lastPushedAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPushedAt!.minute.toString().padLeft(2, '0')}',
+      );
+    }
+    if (_syncStatus.lastRemoteUpdatedAt != null) {
+      parts.add('Remote updated');
     }
     if (_syncStatus.lastError != null) {
       parts.add('Last sync error');

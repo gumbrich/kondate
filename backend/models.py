@@ -48,6 +48,7 @@ class JoinHouseholdResponse(BaseModel):
 
 
 class HouseholdStateResponse(BaseModel):
+    updatedAt: str
     state: dict[str, Any]
 
 

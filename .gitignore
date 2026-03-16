@@ -19,3 +19,11 @@
 
 # macOS
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Flutter
+.build/
+.dart_tool/
