@@ -1,15 +1,14 @@
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'app_state.dart';
 
 class ShoppingListScreen extends StatefulWidget {
-  final double targetServings;
-  final ShoppingList list;
+  final KondateAppState appState;
 
   const ShoppingListScreen({
     super.key,
-    required this.targetServings,
-    required this.list,
+    required this.appState,
   });
 
   @override
@@ -17,221 +16,186 @@ class ShoppingListScreen extends StatefulWidget {
 }
 
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
-  static const String _prefsKey = 'shopping_checked_keys';
-
-  static const List<CategoryDe> _categoryOrder = <CategoryDe>[
-    CategoryDe.gemuese,
-    CategoryDe.obst,
-    CategoryDe.milchprodukte,
-    CategoryDe.fleischFisch,
-    CategoryDe.tiefkuehl,
-    CategoryDe.konserven,
-    CategoryDe.trockenwaren,
-    CategoryDe.backen,
-    CategoryDe.oeleSaucen,
-    CategoryDe.gewuerze,
-    CategoryDe.getraenke,
-    CategoryDe.sonstiges,
-  ];
-
-  final Set<String> _checked = <String>{};
-  bool _prefsLoaded = false;
+  late KondateAppState _appState;
+  final TextEditingController _manualItemController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadChecked();
+    _appState = widget.appState;
   }
 
-  Future<void> _loadChecked() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final List<String> saved = prefs.getStringList(_prefsKey) ?? <String>[];
+  String _generatedItemId(dynamic item) {
+    final dynamic quantity = item.quantity;
+    final String quantityPart = quantity == null
+        ? 'noqty'
+        : '${quantity.value}_${quantity.unit.name}';
+    return '${item.name}_$quantityPart';
+  }
 
-    if (!mounted) return;
-
+  Future<void> _toggleGeneratedChecked(String itemId) async {
     setState(() {
-      _checked
-        ..clear()
-        ..addAll(saved);
-      _prefsLoaded = true;
+      _appState = _appState.toggleGeneratedShoppingChecked(itemId);
     });
   }
 
-  Future<void> _saveChecked() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_prefsKey, _checked.toList());
-  }
-
-  Future<void> _clearChecked() async {
+  Future<void> _toggleGeneratedRemoved(String itemId) async {
     setState(() {
-      _checked.clear();
+      _appState = _appState.toggleGeneratedShoppingRemoved(itemId);
     });
-    await _saveChecked();
   }
 
-  String _itemKey(ShoppingListItem item) {
-    final Quantity? q = item.quantity;
-    if (q == null) return '${item.category.name}__${item.name}';
-    return '${item.category.name}__${item.name}__${q.value}__${q.unit.name}';
+  Future<void> _addManualItem() async {
+    final String text = _manualItemController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _appState = _appState.addManualShoppingItem(text);
+      _manualItemController.clear();
+    });
   }
 
-  String _categoryLabel(CategoryDe c) {
-    switch (c) {
-      case CategoryDe.gemuese:
-        return 'Gemüse';
-      case CategoryDe.obst:
-        return 'Obst';
-      case CategoryDe.milchprodukte:
-        return 'Milchprodukte';
-      case CategoryDe.fleischFisch:
-        return 'Fleisch / Fisch';
-      case CategoryDe.trockenwaren:
-        return 'Trockenwaren';
-      case CategoryDe.backen:
-        return 'Backen';
-      case CategoryDe.gewuerze:
-        return 'Gewürze';
-      case CategoryDe.oeleSaucen:
-        return 'Öle & Saucen';
-      case CategoryDe.konserven:
-        return 'Konserven';
-      case CategoryDe.tiefkuehl:
-        return 'Tiefkühl';
-      case CategoryDe.getraenke:
-        return 'Getränke';
-      case CategoryDe.sonstiges:
-        return 'Sonstiges';
-    }
+  Future<void> _toggleManualItem(String id) async {
+    setState(() {
+      _appState = _appState.toggleManualShoppingItem(id);
+    });
   }
 
-  String _prettyNumber(double x) {
-    final String s = x.toStringAsFixed(2);
-    return s.replaceAll(RegExp(r'\.?0+$'), '');
+  Future<void> _removeManualItem(String id) async {
+    setState(() {
+      _appState = _appState.removeManualShoppingItem(id);
+    });
   }
 
-  String _formatItem(ShoppingListItem item) {
-    final Quantity? q = item.quantity;
-    final String displayName = item.displayName;
+  void _done() {
+    Navigator.of(context).pop(_appState);
+  }
 
-    if (q == null) {
-      return displayName;
-    }
-
-    final String unit = UnitFormatDe.short(q.unit);
-    final String value = _prettyNumber(q.value);
-
-    if (unit.isEmpty) {
-      return '$value $displayName';
-    }
-
-    return '$value $unit $displayName';
+  @override
+  void dispose() {
+    _manualItemController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final Map<CategoryDe, List<ShoppingListItem>> byCat =
-        <CategoryDe, List<ShoppingListItem>>{};
-    for (final ShoppingListItem it in widget.list.items) {
-      (byCat[it.category] ??= <ShoppingListItem>[]).add(it);
-    }
+    final ShoppingList generatedList = IngredientAggregator.fromRecipes(
+      _appState.selectedMealPlanRecipes(),
+      targetServings: _appState.targetServings,
+    );
 
-    final List<_Row> rows = <_Row>[];
-    for (final CategoryDe cat in _categoryOrder) {
-      final List<ShoppingListItem>? items = byCat[cat];
-      if (items == null || items.isEmpty) continue;
+    final Set<String> checkedGenerated =
+        _appState.shoppingState.checkedGeneratedItemIds.toSet();
+    final Set<String> removedGenerated =
+        _appState.shoppingState.removedGeneratedItemIds.toSet();
 
-      items.sort((ShoppingListItem a, ShoppingListItem b) {
-        return a.displayName.compareTo(b.displayName);
-      });
-
-      rows.add(_Row.header(_categoryLabel(cat)));
-      for (final ShoppingListItem it in items) {
-        rows.add(_Row.item(it));
-      }
-    }
+    final List<dynamic> visibleGeneratedItems = generatedList.items
+        .where((dynamic item) => !removedGenerated.contains(_generatedItemId(item)))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shopping list (${_prettyNumber(widget.targetServings)})'),
+        title: const Text('Shopping list'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Clear checked',
-            icon: const Icon(Icons.refresh),
-            onPressed: _clearChecked,
+            tooltip: 'Done',
+            icon: const Icon(Icons.check),
+            onPressed: _done,
           ),
         ],
       ),
-      body: !_prefsLoaded
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: rows.length,
-              itemBuilder: (_, int i) {
-                final _Row row = rows[i];
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: <Widget>[
+          Text(
+            'For ${_appState.targetServings} servings',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Generated from meal plan',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (visibleGeneratedItems.isEmpty)
+            const Text('No generated shopping items.'),
+          ...visibleGeneratedItems.map((dynamic item) {
+            final String itemId = _generatedItemId(item);
+            final bool checked = checkedGenerated.contains(itemId);
 
-                if (row.isHeader) {
-                  return Container(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text(
-                      row.headerText!,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  );
-                }
-
-                final ShoppingListItem item = row.item!;
-                final String key = _itemKey(item);
-                final bool checked = _checked.contains(key);
-
-                return CheckboxListTile(
+            return Card(
+              child: ListTile(
+                leading: Checkbox(
                   value: checked,
-                  title: Text(
-                    _formatItem(item),
-                    style: TextStyle(
-                      decoration: checked ? TextDecoration.lineThrough : null,
-                    ),
+                  onChanged: (_) => _toggleGeneratedChecked(itemId),
+                ),
+                title: Text(
+                  item.displayText,
+                  style: TextStyle(
+                    decoration:
+                        checked ? TextDecoration.lineThrough : TextDecoration.none,
                   ),
-                  onChanged: (bool? v) async {
-                    setState(() {
-                      if (v == true) {
-                        _checked.add(key);
-                      } else {
-                        _checked.remove(key);
-                      }
-                    });
-                    await _saveChecked();
-                  },
-                );
-              },
-            ),
-    );
-  }
-}
-
-class _Row {
-  final bool isHeader;
-  final String? headerText;
-  final ShoppingListItem? item;
-
-  const _Row._({
-    required this.isHeader,
-    this.headerText,
-    this.item,
-  });
-
-  factory _Row.header(String text) {
-    return _Row._(
-      isHeader: true,
-      headerText: text,
-    );
-  }
-
-  factory _Row.item(ShoppingListItem item) {
-    return _Row._(
-      isHeader: false,
-      item: item,
+                ),
+                trailing: IconButton(
+                  tooltip: 'Hide this item',
+                  icon: const Icon(Icons.remove_circle_outline),
+                  onPressed: () => _toggleGeneratedRemoved(itemId),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 24),
+          const Text(
+            'Manual items',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: TextField(
+                  controller: _manualItemController,
+                  decoration: const InputDecoration(
+                    labelText: 'Add manual item',
+                    hintText: 'e.g. Coffee, toilet paper',
+                  ),
+                  onSubmitted: (_) => _addManualItem(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: _addManualItem,
+                child: const Text('Add'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_appState.shoppingState.manualItems.isEmpty)
+            const Text('No manual items yet.'),
+          ..._appState.shoppingState.manualItems.map((ShoppingManualItem item) {
+            return Card(
+              child: ListTile(
+                leading: Checkbox(
+                  value: item.checked,
+                  onChanged: (_) => _toggleManualItem(item.id),
+                ),
+                title: Text(
+                  item.name,
+                  style: TextStyle(
+                    decoration:
+                        item.checked ? TextDecoration.lineThrough : TextDecoration.none,
+                  ),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Delete manual item',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _removeManualItem(item.id),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

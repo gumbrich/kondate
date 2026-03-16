@@ -476,20 +476,23 @@ class _KondateHomeState extends State<KondateHome> {
     await _persistState();
   }
 
-  void _openShoppingList() {
-    final ShoppingList list = IngredientAggregator.fromRecipes(
-      _appState.selectedMealPlanRecipes(),
-      targetServings: _appState.targetServings,
-    );
-
-    Navigator.of(context).push(
+  Future<void> _openShoppingList() async {
+    final KondateAppState? updatedState =
+        await Navigator.of(context).push<KondateAppState>(
       MaterialPageRoute(
         builder: (_) => ShoppingListScreen(
-          targetServings: _appState.targetServings,
-          list: list,
+          appState: _appState,
         ),
       ),
     );
+
+    if (updatedState == null) return;
+
+    setState(() {
+      _appState = updatedState;
+    });
+
+    await _persistState();
   }
 
   int _daysNeedingSuggestions() {
