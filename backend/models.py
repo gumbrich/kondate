@@ -54,3 +54,4 @@ class HouseholdStateResponse(BaseModel):
 
 class UpdateHouseholdStateRequest(BaseModel):
     state: dict[str, Any]
+    lastSeenUpdatedAt: str | None = None

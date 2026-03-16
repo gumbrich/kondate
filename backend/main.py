@@ -17,7 +17,7 @@ from models import (
 )
 from providers.real_provider import RealSearchProvider
 
-app = FastAPI(title="Kondate Search API", version="0.6.0")
+app = FastAPI(title="Kondate Search API", version="0.7.0")
 
 provider = RealSearchProvider()
 importer = BackendRecipeImporter()
@@ -66,7 +66,16 @@ def update_household_state(
     household_id: str,
     request: UpdateHouseholdStateRequest,
 ) -> dict[str, str]:
-    ok = households.set_state(household_id, request.state)
-    if not ok:
+    ok, current_updated_at = households.set_state(
+        household_id,
+        request.state,
+        request.lastSeenUpdatedAt,
+    )
+    if current_updated_at is None:
         raise HTTPException(status_code=404, detail="Household not found.")
-    return {"status": "ok"}
+    if not ok:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Remote state changed. Current updatedAt={current_updated_at}",
+        )
+    return {"status": "ok", "updatedAt": current_updated_at}

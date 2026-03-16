@@ -26,11 +26,11 @@ class SyncStatus {
     );
   }
 
-  SyncStatus pushedNow() {
+  SyncStatus pushedNow({String? remoteUpdatedAt}) {
     return SyncStatus(
       lastPulledAt: lastPulledAt,
       lastPushedAt: DateTime.now(),
-      lastRemoteUpdatedAt: lastRemoteUpdatedAt,
+      lastRemoteUpdatedAt: remoteUpdatedAt ?? lastRemoteUpdatedAt,
       lastError: null,
     );
   }

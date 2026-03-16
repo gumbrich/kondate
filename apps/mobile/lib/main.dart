@@ -112,11 +112,22 @@ class _KondateHomeState extends State<KondateHome> {
         });
       }
 
-      await _householdApi.saveState(_householdId!, _appState.toMap());
+      final String? updatedAt = await _householdApi.saveState(
+        _householdId!,
+        _appState.toMap(),
+        lastSeenUpdatedAt: _syncStatus.lastRemoteUpdatedAt,
+      );
 
       if (mounted) {
         setState(() {
-          _syncStatus = _syncStatus.pushedNow();
+          _syncStatus = _syncStatus.pushedNow(remoteUpdatedAt: updatedAt);
+        });
+      }
+    } on HouseholdConflictException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Household changed on another device. Refresh first.';
+          _syncStatus = _syncStatus.withError(e.toString());
         });
       }
     } catch (e) {
@@ -236,9 +247,17 @@ class _KondateHomeState extends State<KondateHome> {
     });
 
     try {
-      await _householdApi.saveState(_householdId!, _appState.toMap());
+      final String? updatedAt = await _householdApi.saveState(
+        _householdId!,
+        _appState.toMap(),
+        lastSeenUpdatedAt: _syncStatus.lastRemoteUpdatedAt,
+      );
       setState(() {
-        _syncStatus = _syncStatus.pushedNow();
+        _syncStatus = _syncStatus.pushedNow(remoteUpdatedAt: updatedAt);
+      });
+    } on HouseholdConflictException {
+      setState(() {
+        _error = 'Remote household changed. Please refresh first.';
       });
     } catch (e) {
       setState(() {
@@ -526,7 +545,7 @@ class _KondateHomeState extends State<KondateHome> {
       );
     }
     if (_syncStatus.lastRemoteUpdatedAt != null) {
-      parts.add('Remote updated');
+      parts.add('Remote seen');
     }
     if (_syncStatus.lastError != null) {
       parts.add('Last sync error');

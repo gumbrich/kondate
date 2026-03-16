@@ -70,16 +70,33 @@ class HouseholdStore:
             "state": household["state"],
         }
 
-    def set_state(self, household_id: str, state: dict[str, Any]) -> bool:
+    def set_state(
+        self,
+        household_id: str,
+        state: dict[str, Any],
+        last_seen_updated_at: str | None,
+    ) -> tuple[bool, str | None]:
         data = self._read()
         household = data.get(household_id)
         if household is None:
-            return False
+            return False, None
+
+        if "updatedAt" not in household:
+            household["updatedAt"] = self._now_iso()
+
+        current_updated_at = household["updatedAt"]
+
+        if (
+            last_seen_updated_at is not None
+            and last_seen_updated_at.strip() != ""
+            and last_seen_updated_at != current_updated_at
+        ):
+            return False, current_updated_at
 
         household["state"] = state
         household["updatedAt"] = self._now_iso()
         self._write(data)
-        return True
+        return True, household["updatedAt"]
 
     def _read(self) -> dict[str, Any]:
         return json.loads(self.path.read_text(encoding="utf-8"))

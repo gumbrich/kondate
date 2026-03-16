@@ -21,6 +21,15 @@ class HouseholdStatePayload {
   });
 }
 
+class HouseholdConflictException implements Exception {
+  final String message;
+
+  const HouseholdConflictException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class HouseholdApi {
   static final Uri _baseUri = Uri.parse('http://127.0.0.1:8000');
 
@@ -99,20 +108,38 @@ class HouseholdApi {
     }
   }
 
-  Future<void> saveState(String householdId, Map<String, dynamic> state) async {
+  Future<String?> saveState(
+    String householdId,
+    Map<String, dynamic> state, {
+    required String? lastSeenUpdatedAt,
+  }) async {
     final HttpClient client = HttpClient();
     try {
       final HttpClientRequest request = await client.putUrl(
         _baseUri.resolve('/households/$householdId/state'),
       );
       request.headers.contentType = ContentType.json;
-      request.write(jsonEncode(<String, dynamic>{'state': state}));
+      request.write(
+        jsonEncode(<String, dynamic>{
+          'state': state,
+          'lastSeenUpdatedAt': lastSeenUpdatedAt,
+        }),
+      );
+
       final HttpClientResponse response = await request.close();
       final String body = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 409) {
+        throw HouseholdConflictException(body);
+      }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('Save household state failed: $body');
       }
+
+      final Map<String, dynamic> json =
+          jsonDecode(body) as Map<String, dynamic>;
+      return json['updatedAt'] as String?;
     } finally {
       client.close(force: true);
     }
