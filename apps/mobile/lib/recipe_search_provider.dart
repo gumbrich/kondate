@@ -1,34 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'backend_api_models.dart';
+import 'backend_config.dart';
 
 class RecipeSuggestionCandidate {
   final String title;
-  final String subtitle;
-  final String domain;
   final Uri openUri;
-  final double? score;
+  final String subtitle;
 
   const RecipeSuggestionCandidate({
     required this.title,
-    required this.subtitle,
-    required this.domain,
     required this.openUri,
-    this.score,
+    required this.subtitle,
   });
-
-  factory RecipeSuggestionCandidate.fromSearchResult(
-    RecipeSearchResult result,
-  ) {
-    return RecipeSuggestionCandidate(
-      title: result.title,
-      subtitle: result.subtitle ?? 'Open recipe in browser',
-      domain: result.domain,
-      openUri: Uri.parse(result.url),
-      score: result.score,
-    );
-  }
 }
 
 class RecipeSearchDebugResult {
@@ -56,11 +40,7 @@ abstract class RecipeSearchProvider {
 }
 
 class MockRecipeSearchProvider implements RecipeSearchProvider {
-  // Keep the old name so the rest of the app does not need changes.
-  // It now calls the local backend.
   const MockRecipeSearchProvider();
-
-  static final Uri _baseUri = Uri.parse('http://127.0.0.1:8000');
 
   @override
   Future<List<RecipeSuggestionCandidate>> search({
@@ -68,12 +48,53 @@ class MockRecipeSearchProvider implements RecipeSearchProvider {
     required List<String> trustedSites,
     required int topN,
   }) async {
-    final RecipeSearchDebugResult debug = await searchDebug(
+    return <RecipeSuggestionCandidate>[
+      RecipeSuggestionCandidate(
+        title: '$dishIdea (mock)',
+        openUri: Uri.parse('https://example.com'),
+        subtitle: 'example.com',
+      ),
+    ];
+  }
+
+  @override
+  Future<RecipeSearchDebugResult> searchDebug({
+    required String dishIdea,
+    required List<String> trustedSites,
+    required int topN,
+  }) async {
+    final List<RecipeSuggestionCandidate> candidates = await search(
       dishIdea: dishIdea,
       trustedSites: trustedSites,
       topN: topN,
     );
-    return debug.candidates;
+
+    return RecipeSearchDebugResult(
+      candidates: candidates,
+      debugLines: const <String>[
+        'mock provider active',
+      ],
+    );
+  }
+}
+
+class BackendRecipeSearchProvider implements RecipeSearchProvider {
+  static final Uri _baseUri = Uri.parse(backendBaseUrl);
+
+  const BackendRecipeSearchProvider();
+
+  @override
+  Future<List<RecipeSuggestionCandidate>> search({
+    required String dishIdea,
+    required List<String> trustedSites,
+    required int topN,
+  }) async {
+    final RecipeSearchDebugResult result = await searchDebug(
+      dishIdea: dishIdea,
+      trustedSites: trustedSites,
+      topN: topN,
+    );
+    return result.candidates;
   }
 
   @override
@@ -103,105 +124,56 @@ class MockRecipeSearchProvider implements RecipeSearchProvider {
         return RecipeSearchDebugResult(
           candidates: const <RecipeSuggestionCandidate>[],
           debugLines: <String>[
-            'backend returned status ${response.statusCode}',
+            'backend request failed',
+            'HTTP ${response.statusCode}',
             body,
           ],
         );
       }
 
-      final Map<String, dynamic> json =
+      final Map<String, dynamic> decoded =
           jsonDecode(body) as Map<String, dynamic>;
-      final RecipeSearchResponse parsed = RecipeSearchResponse.fromJson(json);
+
+      final List<dynamic> rawResults =
+          (decoded['results'] as List<dynamic>? ?? const <dynamic>[]);
+
+      final List<RecipeSuggestionCandidate> candidates = rawResults
+          .whereType<Map<String, dynamic>>()
+          .map((Map<String, dynamic> item) {
+            final String title =
+                (item['title'] as String?)?.trim().isNotEmpty == true
+                    ? item['title'] as String
+                    : 'Untitled recipe';
+
+            final String url = (item['url'] as String?)?.trim() ?? '';
+
+            final String domain =
+                (item['domain'] as String?)?.trim().isNotEmpty == true
+                    ? item['domain'] as String
+                    : '';
+
+            final String subtitle =
+                (item['subtitle'] as String?)?.trim().isNotEmpty == true
+                    ? item['subtitle'] as String
+                    : domain;
+
+            return RecipeSuggestionCandidate(
+              title: title,
+              openUri: Uri.parse(url),
+              subtitle: subtitle,
+            );
+          })
+          .where((RecipeSuggestionCandidate c) {
+            return c.openUri.hasScheme && c.openUri.host.isNotEmpty;
+          })
+          .toList();
 
       return RecipeSearchDebugResult(
-        candidates: parsed.results
-            .map(RecipeSuggestionCandidate.fromSearchResult)
-            .toList(),
+        candidates: candidates,
         debugLines: <String>[
-          'backend ok',
-          'received ${parsed.results.length} direct results',
-        ],
-      );
-    } catch (e) {
-      return RecipeSearchDebugResult(
-        candidates: const <RecipeSuggestionCandidate>[],
-        debugLines: <String>[
-          'backend request failed',
-          e.toString(),
-        ],
-      );
-    } finally {
-      client.close(force: true);
-    }
-  }
-}
-
-class HttpRecipeSearchProvider implements RecipeSearchProvider {
-  final Uri baseUri;
-
-  const HttpRecipeSearchProvider({
-    required this.baseUri,
-  });
-
-  @override
-  Future<List<RecipeSuggestionCandidate>> search({
-    required String dishIdea,
-    required List<String> trustedSites,
-    required int topN,
-  }) async {
-    final RecipeSearchDebugResult debug = await searchDebug(
-      dishIdea: dishIdea,
-      trustedSites: trustedSites,
-      topN: topN,
-    );
-    return debug.candidates;
-  }
-
-  @override
-  Future<RecipeSearchDebugResult> searchDebug({
-    required String dishIdea,
-    required List<String> trustedSites,
-    required int topN,
-  }) async {
-    final HttpClient client = HttpClient();
-
-    try {
-      final HttpClientRequest request = await client.postUrl(
-        baseUri.resolve('/search'),
-      );
-      request.headers.contentType = ContentType.json;
-      request.write(
-        jsonEncode(<String, dynamic>{
-          'dishIdea': dishIdea,
-          'trustedSites': trustedSites,
-          'topN': topN,
-        }),
-      );
-
-      final HttpClientResponse response = await request.close();
-      final String body = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return RecipeSearchDebugResult(
-          candidates: const <RecipeSuggestionCandidate>[],
-          debugLines: <String>[
-            'backend returned status ${response.statusCode}',
-            body,
-          ],
-        );
-      }
-
-      final Map<String, dynamic> json =
-          jsonDecode(body) as Map<String, dynamic>;
-      final RecipeSearchResponse parsed = RecipeSearchResponse.fromJson(json);
-
-      return RecipeSearchDebugResult(
-        candidates: parsed.results
-            .map(RecipeSuggestionCandidate.fromSearchResult)
-            .toList(),
-        debugLines: <String>[
-          'backend ok',
-          'received ${parsed.results.length} direct results',
+          'backend request ok',
+          'trusted sites: ${trustedSites.join(', ')}',
+          'received ${candidates.length} result(s)',
         ],
       );
     } catch (e) {

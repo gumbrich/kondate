@@ -2,6 +2,7 @@ import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'ingredient_formatter.dart';
 
 class ShoppingListScreen extends StatefulWidget {
   final KondateAppState appState;
@@ -33,21 +34,65 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     return '${item.name}_$quantityPart';
   }
 
+  String _formatUnitForDisplay(String rawUnit) {
+    final String u = rawUnit.toLowerCase().trim();
+
+    switch (u) {
+      case 'unit.gram':
+      case 'gram':
+        return 'gram';
+      case 'unit.kilogram':
+      case 'kilogram':
+        return 'kilogram';
+      case 'unit.milliliter':
+      case 'milliliter':
+        return 'milliliter';
+      case 'unit.liter':
+      case 'liter':
+        return 'liter';
+      case 'unit.piece':
+      case 'piece':
+        return 'piece';
+      case 'unit.bunch':
+      case 'bunch':
+        return 'bunch';
+      case 'unit.teaspoon':
+      case 'teaspoon':
+        return 'teaspoon';
+      case 'unit.tablespoon':
+      case 'tablespoon':
+        return 'tablespoon';
+      default:
+        return '';
+    }
+  }
+
   String _singleItemText(dynamic item) {
     final dynamic quantity = item.quantity;
+    final String rawName = item.name.toString();
+
     if (quantity == null) {
-      return item.name.toString();
+      return IngredientFormatter.normalizeName(rawName);
     }
 
-    final String value = quantity.value.toString();
-    final String unit = quantity.unit.toString();
-    return '$value $unit ${item.name}';
+    final double value = (quantity.value as num).toDouble();
+    final String unit = _formatUnitForDisplay(quantity.unit.toString());
+
+    return IngredientFormatter.format(
+      quantity: value,
+      unit: unit,
+      name: rawName,
+    );
   }
 
   String _mergeKey(dynamic item) {
     final dynamic quantity = item.quantity;
-    final String unit = quantity == null ? 'none' : quantity.unit.toString();
-    return '${item.name.toString().trim().toLowerCase()}|$unit';
+    final String unit = quantity == null
+        ? 'none'
+        : _formatUnitForDisplay(quantity.unit.toString());
+    final String name =
+        IngredientFormatter.normalizeName(item.name.toString()).toLowerCase();
+    return '$name|$unit';
   }
 
   List<_MergedGeneratedItem> _buildMergedItems(List<dynamic> items) {
@@ -76,10 +121,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
       if (allHaveQuantity && allNumeric) {
         final dynamic firstQuantity = first.quantity;
-        final String unitText = firstQuantity.unit.toString();
+        final String unitText =
+            _formatUnitForDisplay(firstQuantity.unit.toString());
 
         final bool sameUnit = groupItems.every((dynamic item) {
-          return item.quantity.unit.toString() == unitText;
+          return _formatUnitForDisplay(item.quantity.unit.toString()) ==
+              unitText;
         });
 
         if (sameUnit) {
@@ -90,7 +137,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
           merged.add(
             _MergedGeneratedItem(
-              text: '${_formatNumber(sum)} $unitText ${first.name}',
+              text: IngredientFormatter.format(
+                quantity: sum,
+                unit: unitText,
+                name: first.name.toString(),
+              ),
               memberIds: memberIds,
             ),
           );
@@ -114,13 +165,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     );
 
     return merged;
-  }
-
-  String _formatNumber(double value) {
-    if (value == value.roundToDouble()) {
-      return value.toInt().toString();
-    }
-    return value.toStringAsFixed(1).replaceAll('.', ',');
   }
 
   Future<void> _setGeneratedChecked(
@@ -263,10 +307,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shopping list'),
+        title: const Text('Einkaufsliste'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Done',
+            tooltip: 'Fertig',
             icon: const Icon(Icons.check),
             onPressed: _done,
           ),
@@ -282,7 +326,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'For ${_appState.targetServings} servings',
+                    'Für ${_appState.targetServings} Portionen',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -290,13 +334,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Generated: ${visibleGeneratedItems.length} items '
-                    '($checkedGeneratedCount checked)',
+                    'Automatisch: ${visibleGeneratedItems.length} Einträge '
+                    '($checkedGeneratedCount erledigt)',
                     style: const TextStyle(fontSize: 13),
                   ),
                   Text(
-                    'Manual: ${_appState.shoppingState.manualItems.length} items '
-                    '($checkedManualCount checked)',
+                    'Manuell: ${_appState.shoppingState.manualItems.length} Einträge '
+                    '($checkedManualCount erledigt)',
                     style: const TextStyle(fontSize: 13),
                   ),
                 ],
@@ -305,13 +349,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ),
           const SizedBox(height: 12),
           _sectionHeader(
-            'Generated from meal plan',
-            subtitle: 'Merged where possible',
+            'Aus dem Essensplan',
+            subtitle: 'Zusammengeführt, wo möglich',
           ),
           if (visibleGeneratedItems.isEmpty)
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
-              child: Text('No generated shopping items.'),
+              child: Text('Keine automatisch erzeugten Einträge.'),
             ),
           ...visibleGeneratedItems.map((_MergedGeneratedItem item) {
             final bool checked = item.memberIds.every(checkedGenerated.contains);
@@ -334,7 +378,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   ),
                 ),
                 trailing: IconButton(
-                  tooltip: 'Hide this item',
+                  tooltip: 'Ausblenden',
                   icon: const Icon(Icons.remove_circle_outline),
                   onPressed: () => _hideGeneratedItems(item.memberIds),
                 ),
@@ -344,8 +388,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           if (hiddenGeneratedItems.isNotEmpty) ...<Widget>[
             const SizedBox(height: 12),
             _sectionHeader(
-              'Hidden generated items',
-              subtitle: 'Restore ingredients you want back on the list',
+              'Ausgeblendete Einträge',
+              subtitle: 'Hier kannst du Zutaten wieder einblenden',
             ),
             ...hiddenGeneratedItems.map((_MergedGeneratedItem item) {
               return Card(
@@ -358,7 +402,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   trailing: TextButton.icon(
                     onPressed: () => _restoreGeneratedItems(item.memberIds),
                     icon: const Icon(Icons.undo),
-                    label: const Text('Restore'),
+                    label: const Text('Wiederherstellen'),
                   ),
                 ),
               );
@@ -366,8 +410,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ],
           const SizedBox(height: 16),
           _sectionHeader(
-            'Manual items',
-            subtitle: 'Things not derived from recipes',
+            'Manuelle Einträge',
+            subtitle: 'Dinge, die nicht aus Rezepten kommen',
           ),
           Row(
             children: <Widget>[
@@ -375,8 +419,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 child: TextField(
                   controller: _manualItemController,
                   decoration: const InputDecoration(
-                    labelText: 'Add manual item',
-                    hintText: 'e.g. Coffee, toilet paper',
+                    labelText: 'Manuellen Eintrag hinzufügen',
+                    hintText: 'z. B. Kaffee, Toilettenpapier',
                     border: OutlineInputBorder(),
                   ),
                   onSubmitted: (_) => _addManualItem(),
@@ -385,7 +429,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               const SizedBox(width: 12),
               ElevatedButton(
                 onPressed: _addManualItem,
-                child: const Text('Add'),
+                child: const Text('Hinzufügen'),
               ),
             ],
           ),
@@ -393,7 +437,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           if (_appState.shoppingState.manualItems.isEmpty)
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
-              child: Text('No manual items yet.'),
+              child: Text('Noch keine manuellen Einträge.'),
             ),
           ..._appState.shoppingState.manualItems.map((ShoppingManualItem item) {
             return Card(
@@ -412,7 +456,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   ),
                 ),
                 trailing: IconButton(
-                  tooltip: 'Delete manual item',
+                  tooltip: 'Löschen',
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => _removeManualItem(item.id),
                 ),
