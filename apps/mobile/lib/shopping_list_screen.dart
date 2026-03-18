@@ -67,104 +67,64 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     }
   }
 
-  String _singleItemText(dynamic item) {
-    final dynamic quantity = item.quantity;
-    final String rawName = item.name.toString();
-
-    if (quantity == null) {
-      return IngredientFormatter.normalizeName(rawName);
-    }
-
-    final double value = (quantity.value as num).toDouble();
-    final String unit = _formatUnitForDisplay(quantity.unit.toString());
-
-    return IngredientFormatter.format(
-      quantity: value,
-      unit: unit,
-      name: rawName,
-    );
-  }
-
-  String _mergeKey(dynamic item) {
-    final dynamic quantity = item.quantity;
-    final String unit = quantity == null
-        ? 'none'
-        : _formatUnitForDisplay(quantity.unit.toString());
-    final String name =
-        IngredientFormatter.normalizeName(item.name.toString()).toLowerCase();
-    return '$name|$unit';
-  }
-
   List<_MergedGeneratedItem> _buildMergedItems(List<dynamic> items) {
-    final Map<String, List<dynamic>> groups = <String, List<dynamic>>{};
+    final Map<String, _MergeBucket> buckets = <String, _MergeBucket>{};
 
     for (final dynamic item in items) {
-      final String key = _mergeKey(item);
-      groups.putIfAbsent(key, () => <dynamic>[]).add(item);
+      final dynamic quantity = item.quantity;
+      final double q =
+          quantity == null ? 1.0 : (quantity.value as num).toDouble();
+      final String unit = quantity == null
+          ? ''
+          : _formatUnitForDisplay(quantity.unit.toString());
+
+      final IngredientInterpretation parsed =
+          IngredientParser.parse(item.name.toString(), q, unit);
+
+      final String key =
+          '${parsed.name}|${parsed.unit ?? ''}|${parsed.note ?? ''}';
+
+      buckets.putIfAbsent(
+        key,
+        () => _MergeBucket(
+          prototype: parsed,
+        ),
+      );
+
+      buckets[key]!.add(
+        parsed: parsed,
+        memberId: _generatedItemId(item),
+      );
     }
 
-    final List<_MergedGeneratedItem> merged = <_MergedGeneratedItem>[];
+    final List<_MergedGeneratedItem> result = buckets.values.map((
+      _MergeBucket bucket,
+    ) {
+      return _MergedGeneratedItem(
+        text: _formatMerged(bucket.prototype, bucket.totalQuantity),
+        memberIds: bucket.memberIds,
+      );
+    }).toList();
 
-    for (final List<dynamic> groupItems in groups.values) {
-      if (groupItems.isEmpty) continue;
-
-      final dynamic first = groupItems.first;
-      final List<String> memberIds =
-          groupItems.map((dynamic item) => _generatedItemId(item)).toList();
-
-      final bool allHaveQuantity =
-          groupItems.every((dynamic item) => item.quantity != null);
-      final bool allNumeric = groupItems.every((dynamic item) {
-        final dynamic quantity = item.quantity;
-        return quantity != null && quantity.value is num;
-      });
-
-      if (allHaveQuantity && allNumeric) {
-        final dynamic firstQuantity = first.quantity;
-        final String unitText =
-            _formatUnitForDisplay(firstQuantity.unit.toString());
-
-        final bool sameUnit = groupItems.every((dynamic item) {
-          return _formatUnitForDisplay(item.quantity.unit.toString()) ==
-              unitText;
-        });
-
-        if (sameUnit) {
-          double sum = 0;
-          for (final dynamic item in groupItems) {
-            sum += (item.quantity.value as num).toDouble();
-          }
-
-          merged.add(
-            _MergedGeneratedItem(
-              text: IngredientFormatter.format(
-                quantity: sum,
-                unit: unitText,
-                name: first.name.toString(),
-              ),
-              memberIds: memberIds,
-            ),
-          );
-          continue;
-        }
-      }
-
-      for (final dynamic item in groupItems) {
-        merged.add(
-          _MergedGeneratedItem(
-            text: _singleItemText(item),
-            memberIds: <String>[_generatedItemId(item)],
-          ),
-        );
-      }
-    }
-
-    merged.sort(
+    result.sort(
       (_MergedGeneratedItem a, _MergedGeneratedItem b) =>
           a.text.toLowerCase().compareTo(b.text.toLowerCase()),
     );
 
-    return merged;
+    return result;
+  }
+
+  String _formatMerged(
+    IngredientInterpretation proto,
+    double quantity,
+  ) {
+    return IngredientFormatter.format(
+      quantity: quantity,
+      unit: proto.unit ?? '',
+      name: proto.note == null || proto.note!.isEmpty
+          ? proto.name
+          : '${proto.name} ${proto.note}',
+    );
   }
 
   Future<void> _setGeneratedChecked(
@@ -477,4 +437,22 @@ class _MergedGeneratedItem {
     required this.text,
     required this.memberIds,
   });
+}
+
+class _MergeBucket {
+  final IngredientInterpretation prototype;
+  double totalQuantity = 0;
+  final List<String> memberIds = <String>[];
+
+  _MergeBucket({
+    required this.prototype,
+  });
+
+  void add({
+    required IngredientInterpretation parsed,
+    required String memberId,
+  }) {
+    totalQuantity += parsed.displayQuantity;
+    memberIds.add(memberId);
+  }
 }
