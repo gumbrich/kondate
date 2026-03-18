@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:core/core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'backend_config.dart';
+
 class ShoppingManualItem {
   final String id;
   final String name;
@@ -459,16 +461,16 @@ class KondateAppState {
   }
 
   static Future<Recipe> importRecipeFromUrl(String urlText) async {
-    final Uri url = Uri.parse(urlText);
+    final Uri sourceUrl = Uri.parse(urlText);
     final HttpClient client = HttpClient();
 
     try {
       final HttpClientRequest request =
-          await client.postUrl(Uri.parse('http://127.0.0.1:8000/import'));
+          await client.postUrl(Uri.parse('$backendBaseUrl/import'));
       request.headers.contentType = ContentType.json;
       request.write(
         jsonEncode(<String, dynamic>{
-          'url': url.toString(),
+          'url': sourceUrl.toString(),
         }),
       );
 
@@ -499,7 +501,7 @@ class KondateAppState {
       return Recipe(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: json['title'] as String,
-        sourceUrl: url,
+        sourceUrl: sourceUrl,
         defaultServings: (json['servings'] as num?)?.toDouble(),
         ingredients: ingredients,
       );

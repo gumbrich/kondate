@@ -1,8 +1,24 @@
-from __future__ import annotations
-
-from typing import Any, List
-
 from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+
+
+# ----------------------------
+# Recipe search
+# ----------------------------
+
+class SearchRequest(BaseModel):
+    dishIdea: str
+    trustedSites: List[str]
+    topN: int = 3
+
+
+class SearchResult(BaseModel):
+    title: str
+    url: str
+    source: str
+    subtitle: Optional[str] = None
+    domain: Optional[str] = None
+    score: Optional[float] = None
 
 
 class RecipeSearchRequest(BaseModel):
@@ -15,23 +31,34 @@ class RecipeSearchResult(BaseModel):
     title: str
     domain: str
     url: str
-    subtitle: str | None = None
-    score: float | None = None
+    subtitle: Optional[str] = None
+    score: Optional[float] = None
 
 
 class RecipeSearchResponse(BaseModel):
     results: List[RecipeSearchResult]
 
 
+# ----------------------------
+# Recipe import
+# ----------------------------
+
 class ImportRecipeRequest(BaseModel):
-    url: str = Field(min_length=1)
+    url: str
 
 
 class ImportRecipeResponse(BaseModel):
+    id: str = ""
     title: str
-    servings: float | None = None
-    ingredientLines: List[str]
+    sourceUrl: str = ""
+    ingredients: List[Dict[str, Any]] = Field(default_factory=list)
+    ingredientLines: List[str] = Field(default_factory=list)
+    servings: Optional[float] = None
 
+
+# ----------------------------
+# Household creation / join
+# ----------------------------
 
 class CreateHouseholdResponse(BaseModel):
     householdId: str
@@ -39,7 +66,7 @@ class CreateHouseholdResponse(BaseModel):
 
 
 class JoinHouseholdRequest(BaseModel):
-    joinCode: str = Field(min_length=1)
+    joinCode: str
 
 
 class JoinHouseholdResponse(BaseModel):
@@ -47,11 +74,36 @@ class JoinHouseholdResponse(BaseModel):
     joinCode: str
 
 
+# ----------------------------
+# Household state
+# ----------------------------
+
+class HouseholdState(BaseModel):
+    recipes: List[Dict[str, Any]] = Field(default_factory=list)
+    mealPlan: Dict[str, Any] = Field(default_factory=dict)
+    trustedSites: List[str] = Field(default_factory=list)
+    topN: int = 3
+    targetServings: int = 2
+    shoppingState: Dict[str, Any] = Field(default_factory=dict)
+
+
 class HouseholdStateResponse(BaseModel):
+    householdId: str = ""
     updatedAt: str
-    state: dict[str, Any]
+    state: Dict[str, Any]
+
+
+class HouseholdStatePayload(BaseModel):
+    householdId: str = ""
+    updatedAt: str
+    state: HouseholdState
+
+
+class SaveHouseholdRequest(BaseModel):
+    state: Dict[str, Any]
+    lastSeenUpdatedAt: Optional[str] = None
 
 
 class UpdateHouseholdStateRequest(BaseModel):
-    state: dict[str, Any]
-    lastSeenUpdatedAt: str | None = None
+    state: Dict[str, Any]
+    lastSeenUpdatedAt: Optional[str] = None

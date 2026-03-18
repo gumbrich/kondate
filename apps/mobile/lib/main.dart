@@ -607,9 +607,10 @@ class _KondateHomeState extends State<KondateHome> {
       ),
       body: !_dataLoaded
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   if (_householdId != null)
                     Container(
@@ -672,76 +673,108 @@ class _KondateHomeState extends State<KondateHome> {
                   TextField(
                     controller: _urlController,
                     decoration: const InputDecoration(
-                      labelText: 'Recipe URL (JSON-LD)',
+                      labelText: 'Paste recipe URL here',
+                      hintText: 'https://www.chefkoch.de/rezepte/...',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      ElevatedButton(
-                        onPressed: _loading ? null : _importAndAdd,
-                        child: const Text('Import & add'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          const Text(
+                            'Actions',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.auto_awesome),
+                            label: Text('Suggest recipes ($suggestionCount)'),
+                            onPressed:
+                                suggestionCount > 0 ? _openWeeklySuggestions : null,
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.shopping_cart),
+                            label: const Text('Open shopping list'),
+                            onPressed: canGenerate ? _openShoppingList : null,
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.link),
+                            label: const Text('Import pasted URL'),
+                            onPressed: _loading ? null : _importAndAdd,
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.edit),
+                            label: const Text('Create recipe manually'),
+                            onPressed: _loading ? null : _openManualRecipeScreen,
+                          ),
+                        ],
                       ),
-                      ElevatedButton(
-                        onPressed: _loading ? null : _openManualRecipeScreen,
-                        child: const Text('Manual recipe'),
-                      ),
-                      ElevatedButton(
-                        onPressed:
-                            suggestionCount > 0 ? _openWeeklySuggestions : null,
-                        child: Text('Suggest recipes ($suggestionCount)'),
-                      ),
-                      ElevatedButton(
-                        onPressed: canGenerate ? _openShoppingList : null,
-                        child: const Text('Shopping list'),
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: <Widget>[
-                      const Text(
-                        'Household servings:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              const Expanded(
+                                child: Text(
+                                  'Household servings',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _decrementServings,
+                                icon: const Icon(Icons.remove_circle_outline),
+                              ),
+                              Text(
+                                _appState.targetServings.toString(),
+                                style: const TextStyle(fontSize: 18),
+                              ),
+                              IconButton(
+                                onPressed: _incrementServings,
+                                icon: const Icon(Icons.add_circle_outline),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          Row(
+                            children: <Widget>[
+                              const Expanded(
+                                child: Text(
+                                  'Recipe suggestions',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _decrementTopN,
+                                icon: const Icon(Icons.remove_circle_outline),
+                              ),
+                              Text(
+                                'Top ${_appState.topN}',
+                                style: const TextStyle(fontSize: 18),
+                              ),
+                              IconButton(
+                                onPressed: _incrementTopN,
+                                icon: const Icon(Icons.add_circle_outline),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        onPressed: _decrementServings,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      Text(
-                        _appState.targetServings.toString(),
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      IconButton(
-                        onPressed: _incrementServings,
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: <Widget>[
-                      const Text(
-                        'Recipe suggestions:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        onPressed: _decrementTopN,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      Text(
-                        'Top ${_appState.topN}',
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      IconButton(
-                        onPressed: _incrementTopN,
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   if (_loading) const LinearProgressIndicator(),
@@ -754,24 +787,16 @@ class _KondateHomeState extends State<KondateHome> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: <Widget>[
-                          WeeklyPlanSection(
-                            mealPlan: _appState.mealPlan,
-                            recipes: _appState.recipes,
-                            onEdit: _editWeekday,
-                            onClear: _clearWeekday,
-                          ),
-                          const SizedBox(height: 12),
-                          RecipeListSection(
-                            recipes: _appState.recipes,
-                            onDelete: _removeRecipeAt,
-                          ),
-                        ],
-                      ),
-                    ),
+                  WeeklyPlanSection(
+                    mealPlan: _appState.mealPlan,
+                    recipes: _appState.recipes,
+                    onEdit: _editWeekday,
+                    onClear: _clearWeekday,
+                  ),
+                  const SizedBox(height: 12),
+                  RecipeListSection(
+                    recipes: _appState.recipes,
+                    onDelete: _removeRecipeAt,
                   ),
                 ],
               ),

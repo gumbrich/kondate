@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'backend_config.dart';
+
 class HouseholdInfo {
   final String householdId;
   final String joinCode;
@@ -31,7 +33,7 @@ class HouseholdConflictException implements Exception {
 }
 
 class HouseholdApi {
-  static final Uri _baseUri = Uri.parse('http://127.0.0.1:8000');
+  static final Uri _baseUri = Uri.parse(backendBaseUrl);
 
   Future<HouseholdInfo> createHousehold() async {
     final HttpClient client = HttpClient();
