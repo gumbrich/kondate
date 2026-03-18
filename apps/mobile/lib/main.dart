@@ -40,7 +40,7 @@ class KondateHome extends StatefulWidget {
 
 class _KondateHomeState extends State<KondateHome> {
   static const RecipeSearchProvider _recipeSearchProvider =
-      MockRecipeSearchProvider();
+      BackendRecipeSearchProvider();
   static const HouseholdSyncProvider _householdSyncProvider =
       MockHouseholdSyncProvider();
 
@@ -92,7 +92,7 @@ class _KondateHomeState extends State<KondateHome> {
       if (!mounted) return;
       setState(() {
         _dataLoaded = true;
-        _error = 'Could not restore app state: $e';
+        _error = 'App-Zustand konnte nicht geladen werden: $e';
       });
     }
   }
@@ -126,14 +126,15 @@ class _KondateHomeState extends State<KondateHome> {
     } on HouseholdConflictException catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Household changed on another device. Refresh first.';
+          _error =
+              'Der Haushalt wurde auf einem anderen Gerät geändert. Bitte zuerst aktualisieren.';
           _syncStatus = _syncStatus.withError(e.toString());
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Automatic household sync failed: $e';
+          _error = 'Automatische Haushalt-Synchronisierung fehlgeschlagen: $e';
           _syncStatus = _syncStatus.withError(e.toString());
         });
       }
@@ -184,7 +185,7 @@ class _KondateHomeState extends State<KondateHome> {
   Future<void> _loadFromHousehold({bool showLoader = true}) async {
     if (_householdId == null) {
       setState(() {
-        _error = 'No household connected yet.';
+        _error = 'Noch kein Haushalt verbunden.';
       });
       return;
     }
@@ -217,7 +218,7 @@ class _KondateHomeState extends State<KondateHome> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load household state: $e';
+        _error = 'Haushaltszustand konnte nicht geladen werden: $e';
         _syncStatus = _syncStatus.withError(e.toString());
       });
     } finally {
@@ -236,7 +237,7 @@ class _KondateHomeState extends State<KondateHome> {
   Future<void> _saveToHousehold() async {
     if (_householdId == null) {
       setState(() {
-        _error = 'No household connected yet.';
+        _error = 'Noch kein Haushalt verbunden.';
       });
       return;
     }
@@ -257,11 +258,12 @@ class _KondateHomeState extends State<KondateHome> {
       });
     } on HouseholdConflictException {
       setState(() {
-        _error = 'Remote household changed. Please refresh first.';
+        _error =
+            'Der entfernte Haushaltszustand wurde geändert. Bitte zuerst aktualisieren.';
       });
     } catch (e) {
       setState(() {
-        _error = 'Could not save household state: $e';
+        _error = 'Haushaltszustand konnte nicht gespeichert werden: $e';
         _syncStatus = _syncStatus.withError(e.toString());
       });
     } finally {
@@ -539,23 +541,23 @@ class _KondateHomeState extends State<KondateHome> {
 
     if (_syncStatus.lastPulledAt != null) {
       parts.add(
-        'Pulled ${_syncStatus.lastPulledAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPulledAt!.minute.toString().padLeft(2, '0')}',
+        'Geladen ${_syncStatus.lastPulledAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPulledAt!.minute.toString().padLeft(2, '0')}',
       );
     }
     if (_syncStatus.lastPushedAt != null) {
       parts.add(
-        'Pushed ${_syncStatus.lastPushedAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPushedAt!.minute.toString().padLeft(2, '0')}',
+        'Gespeichert ${_syncStatus.lastPushedAt!.hour.toString().padLeft(2, '0')}:${_syncStatus.lastPushedAt!.minute.toString().padLeft(2, '0')}',
       );
     }
     if (_syncStatus.lastRemoteUpdatedAt != null) {
-      parts.add('Remote seen');
+      parts.add('Remote gesehen');
     }
     if (_syncStatus.lastError != null) {
-      parts.add('Last sync error');
+      parts.add('Letzter Sync-Fehler');
     }
 
     if (parts.isEmpty) {
-      return 'No sync yet';
+      return 'Noch keine Synchronisierung';
     }
 
     return parts.join(' • ');
@@ -575,31 +577,31 @@ class _KondateHomeState extends State<KondateHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kondate – MVP'),
+        title: const Text('Kondate'),
         actions: <Widget>[
           if (_householdId != null)
             IconButton(
-              tooltip: 'Refresh household',
+              tooltip: 'Haushalt aktualisieren',
               icon: const Icon(Icons.refresh),
               onPressed: _loading ? null : _refreshHousehold,
             ),
           IconButton(
-            tooltip: 'Household',
+            tooltip: 'Haushalt',
             icon: const Icon(Icons.group),
             onPressed: _openHouseholdScreen,
           ),
           IconButton(
-            tooltip: 'Sync debug',
+            tooltip: 'Sync-Debug',
             icon: const Icon(Icons.cloud_sync),
             onPressed: _openSyncDebugScreen,
           ),
           IconButton(
-            tooltip: 'Trusted sites',
+            tooltip: 'Vertrauenswürdige Seiten',
             icon: const Icon(Icons.public),
             onPressed: _openTrustedSitesScreen,
           ),
           IconButton(
-            tooltip: 'Clear imported recipes',
+            tooltip: 'Importierte Rezepte löschen',
             icon: const Icon(Icons.delete_sweep),
             onPressed: _appState.recipes.isEmpty ? null : _clearRecipes,
           ),
@@ -624,8 +626,8 @@ class _KondateHomeState extends State<KondateHome> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('Household: $_householdId'),
-                          if (_joinCode != null) Text('Join code: $_joinCode'),
+                          Text('Haushalt: $_householdId'),
+                          if (_joinCode != null) Text('Beitrittscode: $_joinCode'),
                           const SizedBox(height: 4),
                           Text(
                             _formatSyncStatus(),
@@ -638,16 +640,16 @@ class _KondateHomeState extends State<KondateHome> {
                             children: <Widget>[
                               ElevatedButton(
                                 onPressed: _loading ? null : _loadFromHousehold,
-                                child: const Text('Load household'),
+                                child: const Text('Haushalt laden'),
                               ),
                               ElevatedButton(
                                 onPressed: _loading ? null : _saveToHousehold,
-                                child: const Text('Save household'),
+                                child: const Text('Haushalt speichern'),
                               ),
                               OutlinedButton(
                                 onPressed:
                                     _loading ? null : _disconnectHousehold,
-                                child: const Text('Disconnect'),
+                                child: const Text('Trennen'),
                               ),
                             ],
                           ),
@@ -663,7 +665,7 @@ class _KondateHomeState extends State<KondateHome> {
                                   ),
                                 ),
                                 SizedBox(width: 8),
-                                Text('Syncing household...'),
+                                Text('Haushalt wird synchronisiert...'),
                               ],
                             ),
                           ],
@@ -673,7 +675,7 @@ class _KondateHomeState extends State<KondateHome> {
                   TextField(
                     controller: _urlController,
                     decoration: const InputDecoration(
-                      labelText: 'Paste recipe URL here',
+                      labelText: 'Rezept-URL hier einfügen',
                       hintText: 'https://www.chefkoch.de/rezepte/...',
                       border: OutlineInputBorder(),
                     ),
@@ -686,7 +688,7 @@ class _KondateHomeState extends State<KondateHome> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
                           const Text(
-                            'Actions',
+                            'Aktionen',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -695,26 +697,26 @@ class _KondateHomeState extends State<KondateHome> {
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.auto_awesome),
-                            label: Text('Suggest recipes ($suggestionCount)'),
+                            label: Text('Rezepte vorschlagen ($suggestionCount)'),
                             onPressed:
                                 suggestionCount > 0 ? _openWeeklySuggestions : null,
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.shopping_cart),
-                            label: const Text('Open shopping list'),
+                            label: const Text('Einkaufsliste öffnen'),
                             onPressed: canGenerate ? _openShoppingList : null,
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.link),
-                            label: const Text('Import pasted URL'),
+                            label: const Text('Eingefügte URL importieren'),
                             onPressed: _loading ? null : _importAndAdd,
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             icon: const Icon(Icons.edit),
-                            label: const Text('Create recipe manually'),
+                            label: const Text('Rezept manuell erstellen'),
                             onPressed: _loading ? null : _openManualRecipeScreen,
                           ),
                         ],
@@ -731,7 +733,7 @@ class _KondateHomeState extends State<KondateHome> {
                             children: <Widget>[
                               const Expanded(
                                 child: Text(
-                                  'Household servings',
+                                  'Portionen im Haushalt',
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -754,7 +756,7 @@ class _KondateHomeState extends State<KondateHome> {
                             children: <Widget>[
                               const Expanded(
                                 child: Text(
-                                  'Recipe suggestions',
+                                  'Anzahl Rezeptvorschläge',
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ),
