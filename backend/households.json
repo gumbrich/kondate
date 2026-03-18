@@ -1,0 +1,186 @@
+{
+  "siwp5ywqm0v1": {
+    "householdId": "siwp5ywqm0v1",
+    "joinCode": "6N9U4W",
+    "state": {
+      "recipes": [],
+      "mealPlan": {
+        "entries": []
+      },
+      "targetServings": 2.5,
+      "trustedSites": [
+        "chefkoch.de",
+        "springlane.de",
+        "eatsmarter.de"
+      ],
+      "topN": 3
+    },
+    "updatedAt": "2026-03-16T21:26:59.260893+00:00"
+  },
+  "3nbo63w5e464": {
+    "householdId": "3nbo63w5e464",
+    "joinCode": "4726SS",
+    "state": {
+      "recipes": [],
+      "mealPlan": {
+        "entries": []
+      },
+      "targetServings": 2.5,
+      "trustedSites": [
+        "chefkoch.de",
+        "springlane.de",
+        "eatsmarter.de"
+      ],
+      "topN": 3
+    }
+  },
+  "i8jnul3y3k18": {
+    "householdId": "i8jnul3y3k18",
+    "joinCode": "D7FN6J",
+    "state": {
+      "recipes": [
+        {
+          "id": "1773698464153",
+          "title": "Ramen - Japanische Nudelsuppe mit lokalen Zutaten",
+          "sourceUrl": "https://www.chefkoch.de/rezepte/1804511291817891/Ramen-Japanische-Nudelsuppe-mit-Huehnerbruehe-und-Schweinefilet.html",
+          "defaultServings": 4.0,
+          "ingredients": [
+            {
+              "raw": "1  Suppenhuhn (auch TK)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1  Lauchstange(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1  Zwiebel(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "4  Knoblauchzehe(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1 Stück(e) Ingwerwurzel (ca. 5 cm)",
+              "normalizedName": null
+            },
+            {
+              "raw": "4  Karotte(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1 Handvoll Algen (optional)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1  Schweinefilet(s) (am Stück, ca. 500 g)",
+              "normalizedName": null
+            },
+            {
+              "raw": "100 ml Sojasauce (japanisch)",
+              "normalizedName": null
+            },
+            {
+              "raw": "100 ml Reiswein (oder Sake)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1 EL Zucker",
+              "normalizedName": null
+            },
+            {
+              "raw": "1  Frühlingszwiebel(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1 Stück(e) Ingwerwurzel (ca. 3 cm)",
+              "normalizedName": null
+            },
+            {
+              "raw": "3  Ei(er)",
+              "normalizedName": null
+            },
+            {
+              "raw": "500 g Ramen-Nudeln (oder andere Nudeln)",
+              "normalizedName": null
+            },
+            {
+              "raw": "1  Noriblatt",
+              "normalizedName": null
+            },
+            {
+              "raw": "100 g Sojasprossen (frische)",
+              "normalizedName": null
+            },
+            {
+              "raw": "2  Frühlingszwiebel(n)",
+              "normalizedName": null
+            },
+            {
+              "raw": "Salz und Pfeffer",
+              "normalizedName": null
+            },
+            {
+              "raw": "n. B. Wasser",
+              "normalizedName": null
+            },
+            {
+              "raw": "evtl. Sojasauce",
+              "normalizedName": null
+            },
+            {
+              "raw": "evtl. Reiswein (oder Sake)",
+              "normalizedName": null
+            }
+          ]
+        }
+      ],
+      "mealPlan": {
+        "entries": [
+          {
+            "weekday": "montag",
+            "dishIdea": "",
+            "recipeId": "1773698464153"
+          }
+        ]
+      },
+      "targetServings": 2.5,
+      "trustedSites": [
+        "chefkoch.de",
+        "springlane.de",
+        "eatsmarter.de"
+      ],
+      "topN": 3,
+      "shoppingState": {
+        "checkedGeneratedItemIds": [],
+        "removedGeneratedItemIds": [],
+        "manualItems": []
+      }
+    },
+    "updatedAt": "2026-03-16T22:01:28.315425+00:00"
+  },
+  "g7a9pismzps2": {
+    "householdId": "g7a9pismzps2",
+    "joinCode": "XHZBKL",
+    "updatedAt": "2026-03-16T22:38:38.989745+00:00",
+    "state": {
+      "recipes": [],
+      "mealPlan": {
+        "entries": []
+      },
+      "targetServings": 2.0,
+      "trustedSites": [
+        "chefkoch.de",
+        "springlane.de",
+        "eatsmarter.de"
+      ],
+      "topN": 3,
+      "shoppingState": {
+        "checkedGeneratedItemIds": [],
+        "removedGeneratedItemIds": [],
+        "manualItems": []
+      }
+    }
+  }
+}
