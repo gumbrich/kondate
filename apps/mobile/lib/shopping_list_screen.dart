@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_state.dart';
 import 'ingredient_formatter.dart';
+import 'shop_preview_screen.dart';
 
 class ShoppingListScreen extends StatefulWidget {
   final KondateAppState appState;
@@ -81,8 +82,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       final IngredientInterpretation parsed =
           IngredientParser.parse(item.name.toString(), q, unit);
 
+      final String canonicalName =
+          IngredientFormatter.canonicalMergeName(parsed.name);
+
       final String key =
-          '${parsed.name}|${parsed.unit ?? ''}|${parsed.note ?? ''}';
+          '$canonicalName|${parsed.unit ?? ''}|${parsed.note ?? ''}';
 
       buckets.putIfAbsent(
         key,
@@ -215,6 +219,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       'schinken',
       'lachs',
       'thunfisch',
+      'suppenhuhn',
     ])) {
       return _ShoppingCategory.fleisch;
     }
@@ -340,6 +345,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     });
   }
 
+  Future<void> _openShopPreview() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ShopPreviewScreen(appState: _appState),
+      ),
+    );
+  }
+
   void _done() {
     Navigator.of(context).pop(_appState);
   }
@@ -437,6 +450,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       appBar: AppBar(
         title: const Text('Einkaufsliste'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Shop-Vorschau',
+            icon: const Icon(Icons.storefront_outlined),
+            onPressed: _openShopPreview,
+          ),
           IconButton(
             tooltip: 'Fertig',
             icon: const Icon(Icons.check),
