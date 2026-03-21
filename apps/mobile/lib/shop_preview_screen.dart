@@ -1,5 +1,6 @@
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
 import 'ingredient_formatter.dart';
@@ -89,9 +90,44 @@ class ShopPreviewScreen extends StatelessWidget {
               ),
               ...grouped[category]!.map((PurchasableItem item) {
                 return Card(
-                  child: ListTile(
-                    title: Text(item.displayName),
-                    subtitle: Text(_subtitleFor(item)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        ListTile(
+                          title: Text(item.displayName),
+                          subtitle: Text(_subtitleFor(item)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: 16,
+                            right: 16,
+                            bottom: 12,
+                          ),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              ElevatedButton.icon(
+                                onPressed: () => _openCoopSearch(
+                                  item.coopSearchQuery,
+                                ),
+                                icon: const Icon(Icons.storefront_outlined),
+                                label: const Text('Bei Coop suchen'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => _openGenericWebSearch(
+                                  item.shopSearchQuery,
+                                ),
+                                icon: const Icon(Icons.search),
+                                label: const Text('Websuche'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }),
@@ -99,6 +135,36 @@ class ShopPreviewScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static Future<void> _openCoopSearch(String query) async {
+    final Uri uri = Uri.https(
+      'www.coop.ch',
+      '/de/search/',
+      <String, String>{'text': query},
+    );
+
+    await _launchExternalUri(uri);
+  }
+
+  static Future<void> _openGenericWebSearch(String query) async {
+    final Uri uri = Uri.https(
+      'www.google.com',
+      '/search',
+      <String, String>{'q': query},
+    );
+
+    await _launchExternalUri(uri);
+  }
+
+  static Future<void> _launchExternalUri(Uri uri) async {
+    final bool ok = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok) {
+      throw Exception('Konnte URL nicht öffnen: $uri');
+    }
   }
 
   static String _generatedItemId(dynamic item) {
