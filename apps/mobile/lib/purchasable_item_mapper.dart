@@ -1,3 +1,4 @@
+import 'coop_product_preferences.dart';
 import 'ingredient_formatter.dart';
 import 'purchasable_item.dart';
 
@@ -17,6 +18,12 @@ class PurchasableItemMapper {
             ? _inferFallbackUnit(lower)
             : parsed.unit!;
 
+    final String canonicalKey =
+        IngredientFormatter.canonicalMergeName(normalizedName);
+
+    final CoopProductPreference? preference =
+        CoopProductPreferences.findByCanonicalKey(canonicalKey);
+
     return PurchasableItem(
       displayName: normalizedName,
       category: _categoryFor(lower),
@@ -32,6 +39,8 @@ class PurchasableItemMapper {
         quantity: parsed.displayQuantity,
         unit: effectiveUnit,
       ),
+      coopPreferredSearchQuery: preference?.preferredSearchQuery,
+      coopPreferredProductLabel: preference?.preferredProductLabel,
       quantity: parsed.displayQuantity,
       unit: effectiveUnit,
       preferredPackage: _preferredPackage(lower, effectiveUnit),

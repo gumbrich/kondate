@@ -63,8 +63,8 @@ class ShopPreviewScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Hier siehst du, welche kaufbaren Artikel aus der Einkaufsliste abgeleitet werden. '
-                    'Jetzt bereits mit Coop-orientierten Suchbegriffen.',
+                    'Hier siehst du kaufbare Artikel mit Coop-orientierten Suchbegriffen '
+                    'und – wo vorhanden – bevorzugten Produktprofilen.',
                   ),
                 ],
               ),
@@ -116,6 +116,15 @@ class ShopPreviewScreen extends StatelessWidget {
                                 icon: const Icon(Icons.storefront_outlined),
                                 label: const Text('Bei Coop suchen'),
                               ),
+                              if (item.coopPreferredSearchQuery != null &&
+                                  item.coopPreferredSearchQuery!.isNotEmpty)
+                                FilledButton.tonalIcon(
+                                  onPressed: () => _openCoopSearch(
+                                    item.coopPreferredSearchQuery!,
+                                  ),
+                                  icon: const Icon(Icons.star_outline),
+                                  label: const Text('Bevorzugt suchen'),
+                                ),
                               OutlinedButton.icon(
                                 onPressed: () => _openGenericWebSearch(
                                   item.shopSearchQuery,
@@ -308,6 +317,16 @@ class ShopPreviewScreen extends StatelessWidget {
       'Allgemeine Suche: ${item.shopSearchQuery}',
       'Coop-Suche: ${item.coopSearchQuery}',
     ];
+
+    if (item.coopPreferredProductLabel != null &&
+        item.coopPreferredProductLabel!.isNotEmpty) {
+      lines.add('Bevorzugtes Profil: ${item.coopPreferredProductLabel}');
+    }
+
+    if (item.coopPreferredSearchQuery != null &&
+        item.coopPreferredSearchQuery!.isNotEmpty) {
+      lines.add('Bevorzugte Coop-Suche: ${item.coopPreferredSearchQuery}');
+    }
 
     if (item.preferredPackage != null && item.preferredPackage!.isNotEmpty) {
       lines.add('Bevorzugte Packung: ${item.preferredPackage}');
