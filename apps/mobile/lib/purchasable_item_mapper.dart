@@ -26,16 +26,25 @@ class PurchasableItemMapper {
         quantity: parsed.displayQuantity,
         unit: effectiveUnit,
       ),
+      coopSearchQuery: _coopSearchQuery(
+        lower: lower,
+        name: normalizedName,
+        quantity: parsed.displayQuantity,
+        unit: effectiveUnit,
+      ),
       quantity: parsed.displayQuantity,
       unit: effectiveUnit,
       preferredPackage: _preferredPackage(lower, effectiveUnit),
+      purchaseHeuristic: _purchaseHeuristic(
+        lower: lower,
+        quantity: parsed.displayQuantity,
+        unit: effectiveUnit,
+      ),
       note: parsed.note,
     );
   }
 
   static PurchasableCategory _categoryFor(String lower) {
-    // Wichtig: speziellere Kategorien zuerst
-
     if (_containsAny(lower, const <String>[
       'geschälte tomaten',
       'gehackte tomaten',
@@ -186,6 +195,76 @@ class PurchasableItemMapper {
       return '$lower 1l';
     }
 
+    if (lower.contains('joghurt')) {
+      return '$lower 500g';
+    }
+
+    return name.toLowerCase();
+  }
+
+  static String _coopSearchQuery({
+    required String lower,
+    required String name,
+    required double quantity,
+    required String unit,
+  }) {
+    if (lower.contains('stückige tomaten')) {
+      return 'stückige tomaten 400g';
+    }
+
+    if (lower.contains('gehackte tomaten')) {
+      return 'gehackte tomaten 400g';
+    }
+
+    if (lower.contains('geschälte tomaten')) {
+      return 'geschälte tomaten 400g';
+    }
+
+    if (lower.contains('passierte tomaten')) {
+      return 'passierte tomaten 500g';
+    }
+
+    if (lower.contains('hackfleisch')) {
+      return 'hackfleisch gemischt 500g';
+    }
+
+    if (lower.contains('milch')) {
+      return 'milch 1l';
+    }
+
+    if (lower.contains('sahne')) {
+      return 'rahm 200ml';
+    }
+
+    if (lower.contains('joghurt')) {
+      return 'nature joghurt 500g';
+    }
+
+    if (lower.contains('parmesan')) {
+      return 'parmesan gerieben';
+    }
+
+    if (lower.contains('mozzarella')) {
+      return 'mozzarella';
+    }
+
+    if (lower.contains('sojasoße') || lower.contains('sojasauce')) {
+      return 'sojasauce';
+    }
+
+    if (lower.contains('festkochende kartoffeln') ||
+        lower.contains('kartoffel')) {
+      return 'kartoffeln festkochend';
+    }
+
+    if (lower.contains('rote paprika')) {
+      return 'paprika rot';
+    }
+
+    if (lower.contains('gelbe paprika')) {
+      return 'paprika gelb';
+    }
+
     return name.toLowerCase();
   }
 
@@ -194,7 +273,40 @@ class PurchasableItemMapper {
     if (lower.contains('hackfleisch')) return 'Packung 500 g';
     if (lower.contains('sahne')) return 'Becher 200 ml';
     if (lower.contains('milch')) return '1 l';
+    if (lower.contains('joghurt')) return 'Becher 500 g';
     if (unit == 'Bund') return 'Bund';
+    return null;
+  }
+
+  static String? _purchaseHeuristic({
+    required String lower,
+    required double quantity,
+    required String unit,
+  }) {
+    if (lower.contains('tomaten')) {
+      return 'Bevorzuge Standard-Dosen statt Einzelgewichten.';
+    }
+
+    if (lower.contains('hackfleisch')) {
+      return 'Bevorzuge 500-g-Packungen und runde eher nach oben.';
+    }
+
+    if (lower.contains('milch')) {
+      return 'Bevorzuge 1-Liter-Packungen.';
+    }
+
+    if (lower.contains('sahne')) {
+      return 'Bevorzuge 200-ml-Becher.';
+    }
+
+    if (lower.contains('joghurt')) {
+      return 'Bevorzuge Naturjoghurt in Bechern statt Spezialsorten.';
+    }
+
+    if (unit == 'Bund') {
+      return 'Kräuter möglichst als ganzen Bund kaufen.';
+    }
+
     return null;
   }
 

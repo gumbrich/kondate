@@ -34,7 +34,7 @@ class ShopPreviewScreen extends StatelessWidget {
         _buildMergedIngredients(visibleRawGeneratedItems);
 
     final List<PurchasableItem> purchasableItems = mergedItems
-        .map(( _MergedIngredient item) => item.toPurchasableItem())
+        .map((_MergedIngredient item) => item.toPurchasableItem())
         .toList();
 
     final Map<PurchasableCategory, List<PurchasableItem>> grouped =
@@ -63,7 +63,7 @@ class ShopPreviewScreen extends StatelessWidget {
                   SizedBox(height: 8),
                   Text(
                     'Hier siehst du, welche kaufbaren Artikel aus der Einkaufsliste abgeleitet werden. '
-                    'Das ist die Grundlage für spätere Coop-Suche und Warenkorb-Logik.',
+                    'Jetzt bereits mit Coop-orientierten Suchbegriffen.',
                   ),
                 ],
               ),
@@ -239,11 +239,17 @@ class ShopPreviewScreen extends StatelessWidget {
       item.unit.isEmpty
           ? 'Menge: $quantityText'
           : 'Menge: $quantityText ${item.unit}',
-      'Suche: ${item.shopSearchQuery}',
+      'Allgemeine Suche: ${item.shopSearchQuery}',
+      'Coop-Suche: ${item.coopSearchQuery}',
     ];
 
     if (item.preferredPackage != null && item.preferredPackage!.isNotEmpty) {
       lines.add('Bevorzugte Packung: ${item.preferredPackage}');
+    }
+
+    if (item.purchaseHeuristic != null &&
+        item.purchaseHeuristic!.isNotEmpty) {
+      lines.add('Strategie: ${item.purchaseHeuristic}');
     }
 
     if (item.note != null && item.note!.isNotEmpty) {
