@@ -953,9 +953,7 @@ class IngredientParser {
     'lasagneplatten': 'Lasagneplatten',
     'lasagneplatte': 'Lasagneplatte',
     'ei': 'Ei',
-    'eier': 'Eier',
-    'gelbe paprika': 'gelbe Paprika',
-    'rote paprika': 'rote Paprika',
+    'eier': 'Eier'
   };
 }
 
