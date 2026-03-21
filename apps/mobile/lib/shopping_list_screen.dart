@@ -103,12 +103,16 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       return _MergedGeneratedItem(
         text: _formatMerged(bucket.prototype, bucket.totalQuantity),
         memberIds: bucket.memberIds,
+        category: _categoryFor(bucket.prototype.name),
       );
     }).toList();
 
     result.sort(
-      (_MergedGeneratedItem a, _MergedGeneratedItem b) =>
-          a.text.toLowerCase().compareTo(b.text.toLowerCase()),
+      (_MergedGeneratedItem a, _MergedGeneratedItem b) {
+        final int byCategory = a.category.order.compareTo(b.category.order);
+        if (byCategory != 0) return byCategory;
+        return a.text.toLowerCase().compareTo(b.text.toLowerCase());
+      },
     );
 
     return result;
@@ -125,6 +129,154 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ? proto.name
           : '${proto.name} ${proto.note}',
     );
+  }
+
+  _ShoppingCategory _categoryFor(String name) {
+    final String n = name.toLowerCase();
+
+    if (_containsAny(n, const <String>[
+      'zwiebel',
+      'knoblauch',
+      'karotte',
+      'möhre',
+      'paprika',
+      'zucchini',
+      'aubergine',
+      'brokkoli',
+      'blumenkohl',
+      'spinat',
+      'gurke',
+      'tomate',
+      'tomaten',
+      'kartoffel',
+      'lauch',
+      'porree',
+      'frühlingszwiebel',
+      'ingwer',
+      'chili',
+      'mais',
+      'erbsen',
+      'linsen',
+      'kichererbsen',
+      'bohnen',
+      'petersilie',
+      'schnittlauch',
+      'basilikum',
+      'oregano',
+      'thymian',
+      'rosmarin',
+      'dill',
+      'koriander',
+    ])) {
+      return _ShoppingCategory.gemuese;
+    }
+
+    if (_containsAny(n, const <String>[
+      'geschälte tomaten',
+      'gehackte tomaten',
+      'passierte tomaten',
+      'stückige tomaten',
+      'tomatenmark',
+      'ketchup',
+      'kokosmilch',
+      'thunfisch',
+      'mais',
+      'bohnen',
+      'kichererbsen',
+    ])) {
+      return _ShoppingCategory.konserven;
+    }
+
+    if (_containsAny(n, const <String>[
+      'milch',
+      'sahne',
+      'frischkäse',
+      'quark',
+      'joghurt',
+      'schmand',
+      'crème fraîche',
+      'mascarpone',
+      'mozzarella',
+      'parmesan',
+      'gouda',
+      'emmentaler',
+      'feta',
+      'ricotta',
+      'butter',
+    ])) {
+      return _ShoppingCategory.milchprodukte;
+    }
+
+    if (_containsAny(n, const <String>[
+      'hackfleisch',
+      'rinderhack',
+      'hähnchen',
+      'speck',
+      'schinken',
+      'lachs',
+      'thunfisch',
+    ])) {
+      return _ShoppingCategory.fleisch;
+    }
+
+    if (_containsAny(n, const <String>[
+      'spaghetti',
+      'nudeln',
+      'penne',
+      'reis',
+      'basmatireis',
+      'lasagneplatten',
+      'mehl',
+      'zucker',
+      'paniermehl',
+      'hefe',
+      'backpulver',
+      'natron',
+    ])) {
+      return _ShoppingCategory.trockenwaren;
+    }
+
+    if (_containsAny(n, const <String>[
+      'salz',
+      'pfeffer',
+      'muskat',
+      'zimt',
+      'paprikapulver',
+      'currypulver',
+      'brühe',
+      'sojasoße',
+      'sojasauce',
+      'essig',
+      'balsamico',
+      'honig',
+      'senf',
+      'olivenöl',
+      'öl',
+    ])) {
+      return _ShoppingCategory.gewuerze;
+    }
+
+    return _ShoppingCategory.sonstiges;
+  }
+
+  bool _containsAny(String text, List<String> needles) {
+    for (final String needle in needles) {
+      if (text.contains(needle)) return true;
+    }
+    return false;
+  }
+
+  Map<_ShoppingCategory, List<_MergedGeneratedItem>> _groupByCategory(
+    List<_MergedGeneratedItem> items,
+  ) {
+    final Map<_ShoppingCategory, List<_MergedGeneratedItem>> grouped =
+        <_ShoppingCategory, List<_MergedGeneratedItem>>{};
+
+    for (final _MergedGeneratedItem item in items) {
+      grouped.putIfAbsent(item.category, () => <_MergedGeneratedItem>[]).add(item);
+    }
+
+    return grouped;
   }
 
   Future<void> _setGeneratedChecked(
@@ -220,6 +372,19 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     );
   }
 
+  Widget _categoryHeader(_ShoppingCategory category) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 6),
+      child: Text(
+        category.label,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 15,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _manualItemController.dispose();
@@ -254,6 +419,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         _buildMergedItems(visibleRawGeneratedItems);
     final List<_MergedGeneratedItem> hiddenGeneratedItems =
         _buildMergedItems(hiddenRawGeneratedItems);
+
+    final Map<_ShoppingCategory, List<_MergedGeneratedItem>> groupedVisible =
+        _groupByCategory(visibleGeneratedItems);
 
     final int checkedGeneratedCount = visibleGeneratedItems.where(
       (_MergedGeneratedItem item) {
@@ -310,41 +478,46 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           const SizedBox(height: 12),
           _sectionHeader(
             'Aus dem Essensplan',
-            subtitle: 'Zusammengeführt, wo möglich',
+            subtitle: 'Zusammengeführt und sortiert',
           ),
           if (visibleGeneratedItems.isEmpty)
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
               child: Text('Keine automatisch erzeugten Einträge.'),
             ),
-          ...visibleGeneratedItems.map((_MergedGeneratedItem item) {
-            final bool checked = item.memberIds.every(checkedGenerated.contains);
+          for (final _ShoppingCategory category in _ShoppingCategory.values)
+            if (groupedVisible.containsKey(category)) ...<Widget>[
+              _categoryHeader(category),
+              ...groupedVisible[category]!.map((_MergedGeneratedItem item) {
+                final bool checked =
+                    item.memberIds.every(checkedGenerated.contains);
 
-            return Card(
-              child: ListTile(
-                leading: Checkbox(
-                  value: checked,
-                  onChanged: (bool? value) {
-                    _setGeneratedChecked(item.memberIds, value ?? false);
-                  },
-                ),
-                title: Text(
-                  item.text,
-                  style: TextStyle(
-                    decoration: checked
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                    color: checked ? Colors.black54 : null,
+                return Card(
+                  child: ListTile(
+                    leading: Checkbox(
+                      value: checked,
+                      onChanged: (bool? value) {
+                        _setGeneratedChecked(item.memberIds, value ?? false);
+                      },
+                    ),
+                    title: Text(
+                      item.text,
+                      style: TextStyle(
+                        decoration: checked
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        color: checked ? Colors.black54 : null,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Ausblenden',
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: () => _hideGeneratedItems(item.memberIds),
+                    ),
                   ),
-                ),
-                trailing: IconButton(
-                  tooltip: 'Ausblenden',
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () => _hideGeneratedItems(item.memberIds),
-                ),
-              ),
-            );
-          }),
+                );
+              }),
+            ],
           if (hiddenGeneratedItems.isNotEmpty) ...<Widget>[
             const SizedBox(height: 12),
             _sectionHeader(
@@ -432,10 +605,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 class _MergedGeneratedItem {
   final String text;
   final List<String> memberIds;
+  final _ShoppingCategory category;
 
   const _MergedGeneratedItem({
     required this.text,
     required this.memberIds,
+    required this.category,
   });
 }
 
@@ -455,4 +630,19 @@ class _MergeBucket {
     totalQuantity += parsed.displayQuantity;
     memberIds.add(memberId);
   }
+}
+
+enum _ShoppingCategory {
+  gemuese(0, 'Gemüse & Kräuter'),
+  konserven(1, 'Konserven'),
+  milchprodukte(2, 'Milchprodukte'),
+  fleisch(3, 'Fleisch & Fisch'),
+  trockenwaren(4, 'Trockenwaren'),
+  gewuerze(5, 'Gewürze & Basiszutaten'),
+  sonstiges(6, 'Sonstiges');
+
+  final int order;
+  final String label;
+
+  const _ShoppingCategory(this.order, this.label);
 }

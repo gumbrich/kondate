@@ -7,28 +7,70 @@ class IngredientFormatter {
     final IngredientInterpretation parsed =
         IngredientParser.parse(name, quantity, unit);
 
-    final String q = _formatQuantity(parsed.displayQuantity);
-    final String effectiveUnit =
+    final String baseUnit =
         (parsed.unit == null || parsed.unit!.isEmpty)
             ? _inferUnit(parsed.name)
             : parsed.unit!;
 
-    if (effectiveUnit.isEmpty) {
-      if (parsed.note != null && parsed.note!.isNotEmpty) {
-        return '$q ${parsed.name} (${parsed.note})';
+    final _PackagingResult packaged = _applyPackaging(
+      name: parsed.name,
+      quantity: parsed.displayQuantity,
+      unit: baseUnit,
+      note: parsed.note,
+    );
+
+    final String q = _formatQuantity(packaged.quantity);
+    final String displayUnit = _pluralizeUnit(
+      unit: packaged.unit,
+      quantity: packaged.quantity,
+    );
+
+    if (displayUnit.isEmpty) {
+      if (packaged.note != null && packaged.note!.isNotEmpty) {
+        return '$q ${packaged.name} (${packaged.note})';
       }
-      return '$q ${parsed.name}';
+      return '$q ${packaged.name}';
     }
 
-    if (parsed.note != null && parsed.note!.isNotEmpty) {
-      return '$q $effectiveUnit ${parsed.name} (${parsed.note})';
+    if (packaged.note != null && packaged.note!.isNotEmpty) {
+      return '$q $displayUnit ${packaged.name} (${packaged.note})';
     }
 
-    return '$q $effectiveUnit ${parsed.name}';
+    return '$q $displayUnit ${packaged.name}';
   }
 
   static String normalizeName(String input) {
     return IngredientParser.parse(input, 1, '').name;
+  }
+
+  static String canonicalMergeName(String input) {
+    final String normalized = normalizeName(input).toLowerCase();
+
+    switch (normalized) {
+      case 'zwiebel':
+      case 'zwiebeln':
+        return 'zwiebel';
+      case 'knoblauchzehe':
+      case 'knoblauchzehen':
+        return 'knoblauchzehe';
+      case 'karotte':
+      case 'karotten':
+        return 'karotte';
+      case 'ei':
+      case 'eier':
+        return 'ei';
+      case 'rote paprika':
+        return 'paprika_rot';
+      case 'gelbe paprika':
+        return 'paprika_gelb';
+      case 'grüne paprika':
+        return 'paprika_gruen';
+      case 'festkochende kartoffel':
+      case 'festkochende kartoffeln':
+        return 'kartoffel_festkochend';
+      default:
+        return normalized;
+    }
   }
 
   static String _formatQuantity(double q) {
@@ -55,10 +97,17 @@ class IngredientFormatter {
     }
 
     if (n.contains('öl')) return 'EL';
-
     if (n.contains('brühe')) return 'ml';
-
     if (n.contains('milch') || n.contains('sahne')) return 'ml';
+
+    if (n.contains('joghurt') ||
+        n.contains('quark') ||
+        n.contains('frischkäse') ||
+        n.contains('schmand') ||
+        n.contains('mascarpone') ||
+        n.contains('ricotta')) {
+      return 'g';
+    }
 
     if (n.contains('spaghetti') ||
         n.contains('nudeln') ||
@@ -69,13 +118,104 @@ class IngredientFormatter {
     if (n.contains('tomaten') ||
         n.contains('tomatenmark') ||
         n.contains('ketchup') ||
+        n.contains('sojasoße') ||
         n.contains('hackfleisch') ||
         n.contains('mehl') ||
-        n.contains('butter')) {
+        n.contains('butter') ||
+        n.contains('kartoffel')) {
       return 'g';
     }
 
     return '';
+  }
+
+  static _PackagingResult _applyPackaging({
+    required String name,
+    required double quantity,
+    required String unit,
+    String? note,
+  }) {
+    final String n = name.toLowerCase();
+
+    if (n.contains('tomaten') && unit == 'g') {
+      const double packSize = 400;
+      if (quantity >= 300) {
+        final int cans = (quantity / packSize).round().clamp(1, 999);
+        return _PackagingResult(
+          quantity: cans.toDouble(),
+          unit: 'Dose',
+          name: name,
+          note: 'à 400 g',
+        );
+      }
+    }
+
+    if (n.contains('hackfleisch') && unit == 'g') {
+      const double packSize = 500;
+      if (quantity >= 300) {
+        final int packs = (quantity / packSize).round().clamp(1, 999);
+        return _PackagingResult(
+          quantity: packs.toDouble(),
+          unit: 'Packung',
+          name: name,
+          note: 'à 500 g',
+        );
+      }
+    }
+
+    if (n.contains('milch') && unit == 'ml') {
+      final double liters = quantity / 1000;
+      if (liters >= 0.5) {
+        return _PackagingResult(
+          quantity: liters,
+          unit: 'l',
+          name: name,
+          note: note,
+        );
+      }
+    }
+
+    if (n.contains('sahne') && unit == 'ml') {
+      const double cupSize = 200;
+      if (quantity >= 150) {
+        final int cups = (quantity / cupSize).round().clamp(1, 999);
+        return _PackagingResult(
+          quantity: cups.toDouble(),
+          unit: 'Becher',
+          name: name,
+          note: 'à 200 ml',
+        );
+      }
+    }
+
+    return _PackagingResult(
+      quantity: quantity,
+      unit: unit,
+      name: name,
+      note: note,
+    );
+  }
+
+  static String _pluralizeUnit({
+    required String unit,
+    required double quantity,
+  }) {
+    final bool singular = quantity == 1;
+
+    switch (unit) {
+      case 'Dose':
+        return singular ? 'Dose' : 'Dosen';
+      case 'Packung':
+        return singular ? 'Packung' : 'Packungen';
+      case 'Becher':
+        return 'Becher';
+      case 'Stk.':
+        return 'Stk.';
+      case 'Bund':
+        return 'Bund';
+      default:
+        return unit;
+    }
   }
 }
 
@@ -91,20 +231,6 @@ class IngredientInterpretation {
     this.unit,
     this.note,
   });
-
-  IngredientInterpretation copyWith({
-    String? name,
-    double? displayQuantity,
-    String? unit,
-    String? note,
-  }) {
-    return IngredientInterpretation(
-      name: name ?? this.name,
-      displayQuantity: displayQuantity ?? this.displayQuantity,
-      unit: unit ?? this.unit,
-      note: note ?? this.note,
-    );
-  }
 }
 
 class IngredientParser {
@@ -156,14 +282,15 @@ class IngredientParser {
     name = name.replaceAll(RegExp(r'\bmit kräutern\b'), '');
     name = name.replaceAll(RegExp(r'\bstückige tomaten.*'), 'stückige tomaten');
 
-    name = name.replaceAll(RegExp(r'\blasagneplatte\s*n\b'), 'lasagneplatten');
-    name = name.replaceAll(RegExp(r'\bzwiebel\s*n\b'), 'zwiebeln');
-    name = name.replaceAll(RegExp(r'\bknoblauchzehe\s*n\b'), 'knoblauchzehen');
-    name = name.replaceAll(RegExp(r'\bkarotte\s*n\b'), 'karotten');
-    name = name.replaceAll(RegExp(r'\bmöhre\s*n\b'), 'möhren');
-    name = name.replaceAll(RegExp(r'\btomate\s*n\b'), 'tomaten');
-    name = name.replaceAll(RegExp(r'\bpaprikaschote\s*n\b'), 'paprika');
-    name = name.replaceAll(RegExp(r'\bn\b$'), '');
+    name = name.replaceAll(RegExp(r'\blasagneplatte\s+n\b'), 'lasagneplatten');
+    name = name.replaceAll(RegExp(r'\bzwiebel\s+n\b'), 'zwiebeln');
+    name = name.replaceAll(RegExp(r'\bknoblauchzehe\s+n\b'), 'knoblauchzehen');
+    name = name.replaceAll(RegExp(r'\bkarotte\s+n\b'), 'karotten');
+    name = name.replaceAll(RegExp(r'\bmöhre\s+n\b'), 'möhren');
+    name = name.replaceAll(RegExp(r'\btomate\s+n\b'), 'tomaten');
+    name = name.replaceAll(RegExp(r'\bpaprikaschote\s+n\b'), 'paprika');
+    name = name.replaceAll(RegExp(r'\bkartoffel\s+n\b'), 'kartoffeln');
+    name = name.replaceAll(RegExp(r'\bsuppenhuh\s+n\b'), 'suppenhuhn');
 
     name = name.replaceAll(RegExp(r'\btomaten geschälte\b'), 'geschälte tomaten');
     name = name.replaceAll(RegExp(r'\btomaten gehackte\b'), 'gehackte tomaten');
@@ -186,12 +313,44 @@ class IngredientParser {
       'parmesan, gerieben',
     );
 
+    if (name == 'ei er' || name == 'eier') {
+      name = 'eier';
+    }
+    if (name == 'gelbe') {
+      name = 'gelbe paprika';
+    }
+    if (name == 'rote') {
+      name = 'rote paprika';
+    }
+    if (name == 'geschälte' || name == 'geschalte') {
+      name = 'geschälte tomaten';
+    }
+    if (name == 'suppenhuh' || name == 'suppenhuhn') {
+      name = 'suppenhuhn';
+    }
+    if (name == 'sojasausse' || name == 'sojasause') {
+      name = 'sojasoße';
+    }
+
+    if (name.contains('kartoffel') && name.contains('festkochend')) {
+      name = quantity == 1
+          ? 'festkochende kartoffel'
+          : 'festkochende kartoffeln';
+    }
+
+    if (name.contains('gelbe') && !name.contains('paprika')) {
+      name = 'gelbe paprika';
+    }
+    if (name.contains('rote') && !name.contains('paprika')) {
+      name = 'rote paprika';
+    }
+
     name = _normalizeWhitespace(name);
 
     final String? exact = _exactCorrections[name];
     if (exact != null) {
       return IngredientInterpretation(
-        name: _applySingularIfNeeded(
+        name: _applySingularPluralIfNeeded(
           name: exact,
           rawUnit: rawUnit,
           quantity: quantity,
@@ -202,7 +361,7 @@ class IngredientParser {
       );
     }
 
-    if (_containsAny(name, <String>[
+    if (_containsAny(name, const <String>[
       'geschälte tomaten',
       'gehackte tomaten',
       'passierte tomaten',
@@ -241,6 +400,15 @@ class IngredientParser {
       );
     }
 
+    if (name.contains('sojasoße') || name.contains('sojasauce')) {
+      return IngredientInterpretation(
+        name: 'Sojasoße',
+        displayQuantity: quantity,
+        unit: _mapUnit(rawUnit).isEmpty ? 'ml' : _mapUnit(rawUnit),
+        note: note,
+      );
+    }
+
     if (name.contains('hackfleisch')) {
       return IngredientInterpretation(
         name: 'Gemischtes Hackfleisch',
@@ -271,6 +439,18 @@ class IngredientParser {
     if (name.contains('spaghetti') || name.contains('nudeln')) {
       return IngredientInterpretation(
         name: _titleCaseGerman(name),
+        displayQuantity: quantity,
+        unit: _fallbackUnit(_mapUnit(rawUnit), 'g'),
+        note: note,
+      );
+    }
+
+    if (name.contains('kartoffel')) {
+      final String displayName = quantity == 1
+          ? 'festkochende Kartoffel'
+          : 'festkochende Kartoffeln';
+      return IngredientInterpretation(
+        name: displayName,
         displayQuantity: quantity,
         unit: _fallbackUnit(_mapUnit(rawUnit), 'g'),
         note: note,
@@ -336,7 +516,7 @@ class IngredientParser {
       return IngredientInterpretation(
         name: displayName,
         displayQuantity: quantity,
-        unit: _preferPieceLikeUnit(rawUnit, fallback: ''),
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
         note: note,
       );
     }
@@ -347,7 +527,7 @@ class IngredientParser {
       return IngredientInterpretation(
         name: displayName,
         displayQuantity: quantity,
-        unit: _preferPieceLikeUnit(rawUnit, fallback: ''),
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
         note: note,
       );
     }
@@ -357,7 +537,44 @@ class IngredientParser {
       return IngredientInterpretation(
         name: displayName,
         displayQuantity: quantity,
-        unit: _preferPieceLikeUnit(rawUnit, fallback: ''),
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
+        note: note,
+      );
+    }
+
+    if (name.contains('ei')) {
+      final String displayName = quantity == 1 ? 'Ei' : 'Eier';
+      return IngredientInterpretation(
+        name: displayName,
+        displayQuantity: quantity,
+        unit: '',
+        note: note,
+      );
+    }
+
+    if (name.contains('suppenhuhn')) {
+      return IngredientInterpretation(
+        name: 'Suppenhuhn',
+        displayQuantity: quantity,
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
+        note: note,
+      );
+    }
+
+    if (name.contains('gelbe paprika')) {
+      return IngredientInterpretation(
+        name: 'gelbe Paprika',
+        displayQuantity: quantity,
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
+        note: note,
+      );
+    }
+
+    if (name.contains('rote paprika')) {
+      return IngredientInterpretation(
+        name: 'rote Paprika',
+        displayQuantity: quantity,
+        unit: _preferPieceLikeUnit(rawUnit, fallback: 'Stk.'),
         note: note,
       );
     }
@@ -416,6 +633,15 @@ class IngredientParser {
       );
     }
 
+    if (name.contains('joghurt')) {
+      return IngredientInterpretation(
+        name: 'Joghurt',
+        displayQuantity: quantity,
+        unit: _fallbackUnit(_mapUnit(rawUnit), 'g'),
+        note: note,
+      );
+    }
+
     if (name.contains('olivenöl')) {
       return IngredientInterpretation(
         name: 'Olivenöl',
@@ -443,8 +669,13 @@ class IngredientParser {
       );
     }
 
-    final String fallbackName = _applySingularIfNeeded(
-      name: _titleCaseGerman(name),
+    final String fallbackName = _applySingularPluralIfNeeded(
+      name: _titleCaseGerman(name)
+          .replaceFirst('Rote Paprika', 'rote Paprika')
+          .replaceFirst('Gelbe Paprika', 'gelbe Paprika')
+          .replaceFirst('Grüne Paprika', 'grüne Paprika')
+          .replaceFirst('Festkochende Kartoffel', 'festkochende Kartoffel')
+          .replaceFirst('Festkochende Kartoffeln', 'festkochende Kartoffeln'),
       rawUnit: rawUnit,
       quantity: quantity,
     );
@@ -495,7 +726,7 @@ class IngredientParser {
     return fallback;
   }
 
-  static String _applySingularIfNeeded({
+  static String _applySingularPluralIfNeeded({
     required String name,
     required String rawUnit,
     required double quantity,
@@ -506,6 +737,14 @@ class IngredientParser {
       if (name == 'Zwiebeln') return 'Zwiebel';
       if (name == 'Knoblauchzehen') return 'Knoblauchzehe';
       if (name == 'Karotten') return 'Karotte';
+      if (name == 'Eier') return 'Ei';
+    }
+
+    if ((mapped == 'Stk.' || mapped.isEmpty) && quantity > 1) {
+      if (name == 'Zwiebel') return 'Zwiebeln';
+      if (name == 'Knoblauchzehe') return 'Knoblauchzehen';
+      if (name == 'Karotte') return 'Karotten';
+      if (name == 'Ei') return 'Eier';
     }
 
     return name;
@@ -585,8 +824,8 @@ class IngredientParser {
   static final Map<String, String> _exactCorrections = <String, String>{
     'zwiebel': 'Zwiebel',
     'zwiebeln': 'Zwiebeln',
-    'rote zwiebel': 'Rote Zwiebel',
-    'rote zwiebeln': 'Rote Zwiebeln',
+    'rote zwiebel': 'rote Zwiebel',
+    'rote zwiebeln': 'rote Zwiebeln',
     'knoblauch': 'Knoblauch',
     'knoblauchzehe': 'Knoblauchzehe',
     'knoblauchzehen': 'Knoblauchzehen',
@@ -597,9 +836,9 @@ class IngredientParser {
     'sellerie': 'Sellerie',
     'staudensellerie': 'Staudensellerie',
     'paprika': 'Paprika',
-    'rote paprika': 'Rote Paprika',
-    'gelbe paprika': 'Gelbe Paprika',
-    'grüne paprika': 'Grüne Paprika',
+    'rote paprika': 'rote Paprika',
+    'gelbe paprika': 'gelbe Paprika',
+    'grüne paprika': 'grüne Paprika',
     'zucchini': 'Zucchini',
     'aubergine': 'Aubergine',
     'champignon': 'Champignon',
@@ -614,6 +853,8 @@ class IngredientParser {
     'cherrytomaten': 'Cherrytomaten',
     'kartoffel': 'Kartoffel',
     'kartoffeln': 'Kartoffeln',
+    'festkochende kartoffel': 'festkochende Kartoffel',
+    'festkochende kartoffeln': 'festkochende Kartoffeln',
     'süßkartoffel': 'Süßkartoffel',
     'süßkartoffeln': 'Süßkartoffeln',
     'lauch': 'Lauch',
@@ -644,6 +885,8 @@ class IngredientParser {
     'tomatenmark': 'Tomatenmark',
     'tomatenketchup': 'Tomatenketchup',
     'ketchup': 'Tomatenketchup',
+    'sojasoße': 'Sojasoße',
+    'sojasauce': 'Sojasoße',
     'butter': 'Butter',
     'milch': 'Milch',
     'sahne': 'Sahne',
@@ -677,6 +920,7 @@ class IngredientParser {
     'schinken': 'Schinken',
     'lachs': 'Lachs',
     'thunfisch': 'Thunfisch',
+    'suppenhuhn': 'Suppenhuhn',
     'mehl': 'Mehl',
     'weizenmehl': 'Weizenmehl',
     'zucker': 'Zucker',
@@ -695,8 +939,6 @@ class IngredientParser {
     'sonnenblumenöl': 'Sonnenblumenöl',
     'essig': 'Essig',
     'balsamico': 'Balsamico',
-    'sojasoße': 'Sojasoße',
-    'sojasauce': 'Sojasoße',
     'honig': 'Honig',
     'senf': 'Senf',
     'brühe': 'Brühe',
@@ -712,5 +954,21 @@ class IngredientParser {
     'lasagneplatte': 'Lasagneplatte',
     'ei': 'Ei',
     'eier': 'Eier',
+    'gelbe paprika': 'gelbe Paprika',
+    'rote paprika': 'rote Paprika',
   };
+}
+
+class _PackagingResult {
+  final double quantity;
+  final String unit;
+  final String name;
+  final String? note;
+
+  const _PackagingResult({
+    required this.quantity,
+    required this.unit,
+    required this.name,
+    this.note,
+  });
 }
