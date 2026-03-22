@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
+import 'coop_cart_prep_screen.dart';
 import 'coop_preferences_screen.dart';
 import 'coop_user_preferences.dart';
 import 'coop_user_preferences_store.dart';
@@ -52,6 +53,14 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
       ),
     );
     await _loadOverrides();
+  }
+
+  Future<void> _openCartPrep(List<PurchasableItem> items) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CoopCartPrepScreen(items: items),
+      ),
+    );
   }
 
   @override
@@ -105,23 +114,31 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(14),
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
+                  const Text(
                     'Vorbereitung für Shop-Integration',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
+                  const SizedBox(height: 8),
+                  const Text(
                     'Hier siehst du kaufbare Artikel mit Coop-orientierten Suchbegriffen '
                     'und – wo vorhanden – bevorzugten Produktprofilen.',
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: purchasableItems.isEmpty
+                        ? null
+                        : () => _openCartPrep(purchasableItems),
+                    icon: const Icon(Icons.shopping_cart_outlined),
+                    label: const Text('Warenkorb vorbereiten'),
                   ),
                 ],
               ),
