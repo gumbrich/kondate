@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
+import 'coop_preferences_screen.dart';
+import 'coop_user_preferences.dart';
+import 'coop_user_preferences_store.dart';
 import 'ingredient_formatter.dart';
 import 'purchasable_item.dart';
 import 'purchasable_item_mapper.dart';
 
-class ShopPreviewScreen extends StatelessWidget {
+class ShopPreviewScreen extends StatefulWidget {
   final KondateAppState appState;
 
   const ShopPreviewScreen({
@@ -16,14 +19,58 @@ class ShopPreviewScreen extends StatelessWidget {
   });
 
   @override
+  State<ShopPreviewScreen> createState() => _ShopPreviewScreenState();
+}
+
+class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
+  final CoopUserPreferencesStore _preferencesStore = CoopUserPreferencesStore();
+  bool _loading = true;
+  Map<String, CoopUserPreferenceOverride> _overrides =
+      <String, CoopUserPreferenceOverride>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOverrides();
+  }
+
+  Future<void> _loadOverrides() async {
+    final Map<String, CoopUserPreferenceOverride> overrides =
+        await _preferencesStore.loadOverrides();
+
+    if (!mounted) return;
+    setState(() {
+      _overrides = overrides;
+      _loading = false;
+    });
+  }
+
+  Future<void> _openPreferences() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const CoopPreferencesScreen(),
+      ),
+    );
+    await _loadOverrides();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     final ShoppingList generatedList = IngredientAggregator.fromRecipes(
-      appState.selectedMealPlanRecipes(),
-      targetServings: appState.targetServings,
+      widget.appState.selectedMealPlanRecipes(),
+      targetServings: widget.appState.targetServings,
     );
 
     final Set<String> removedGenerated =
-        appState.shoppingState.removedGeneratedItemIds.toSet();
+        widget.appState.shoppingState.removedGeneratedItemIds.toSet();
 
     final List<dynamic> visibleRawGeneratedItems = generatedList.items
         .where(
@@ -35,7 +82,10 @@ class ShopPreviewScreen extends StatelessWidget {
         _buildMergedIngredients(visibleRawGeneratedItems);
 
     final List<PurchasableItem> purchasableItems = mergedItems
-        .map((_MergedIngredient item) => item.toPurchasableItem())
+        .map(
+          (_MergedIngredient item) =>
+              item.toPurchasableItem(userOverrides: _overrides),
+        )
         .toList();
 
     final Map<PurchasableCategory, List<PurchasableItem>> grouped =
@@ -44,6 +94,13 @@ class ShopPreviewScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Shop-Vorschau'),
+        actions: <Widget>[
+          IconButton(
+            onPressed: _openPreferences,
+            icon: const Icon(Icons.tune),
+            tooltip: 'Coop-Präferenzen',
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -358,7 +415,9 @@ class _MergedIngredient {
     required this.note,
   });
 
-  PurchasableItem toPurchasableItem() {
+  PurchasableItem toPurchasableItem({
+    required Map<String, CoopUserPreferenceOverride> userOverrides,
+  }) {
     final String sourceName =
         note == null || note!.isEmpty ? name : '$name $note';
 
@@ -366,6 +425,7 @@ class _MergedIngredient {
       quantity: quantity,
       unit: unit,
       name: sourceName,
+      userOverrides: userOverrides,
     );
   }
 }

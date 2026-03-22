@@ -1,4 +1,5 @@
 import 'coop_product_preferences.dart';
+import 'coop_user_preferences.dart';
 import 'ingredient_formatter.dart';
 import 'purchasable_item.dart';
 
@@ -7,6 +8,7 @@ class PurchasableItemMapper {
     required double quantity,
     required String unit,
     required String name,
+    Map<String, CoopUserPreferenceOverride>? userOverrides,
   }) {
     final IngredientInterpretation parsed =
         IngredientParser.parse(name, quantity, unit);
@@ -21,7 +23,10 @@ class PurchasableItemMapper {
     final String canonicalKey =
         IngredientFormatter.canonicalMergeName(normalizedName);
 
-    final CoopProductPreference? preference =
+    final CoopUserPreferenceOverride? userOverride =
+        userOverrides == null ? null : userOverrides[canonicalKey];
+
+    final CoopProductPreference? defaultPreference =
         CoopProductPreferences.findByCanonicalKey(canonicalKey);
 
     return PurchasableItem(
@@ -39,8 +44,12 @@ class PurchasableItemMapper {
         quantity: parsed.displayQuantity,
         unit: effectiveUnit,
       ),
-      coopPreferredSearchQuery: preference?.preferredSearchQuery,
-      coopPreferredProductLabel: preference?.preferredProductLabel,
+      coopPreferredSearchQuery:
+          userOverride?.preferredSearchQuery ??
+              defaultPreference?.preferredSearchQuery,
+      coopPreferredProductLabel:
+          userOverride?.preferredProductLabel ??
+              defaultPreference?.preferredProductLabel,
       quantity: parsed.displayQuantity,
       unit: effectiveUnit,
       preferredPackage: _preferredPackage(lower, effectiveUnit),
