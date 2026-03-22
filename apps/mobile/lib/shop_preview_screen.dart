@@ -5,6 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_state.dart';
 import 'coop_cart_prep_screen.dart';
 import 'coop_preferences_screen.dart';
+import 'coop_product_webview_screen.dart';
+import 'coop_saved_product.dart';
+import 'coop_saved_products_screen.dart';
+import 'coop_saved_products_store.dart';
 import 'coop_user_preferences.dart';
 import 'coop_user_preferences_store.dart';
 import 'ingredient_formatter.dart';
@@ -25,23 +29,29 @@ class ShopPreviewScreen extends StatefulWidget {
 
 class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
   final CoopUserPreferencesStore _preferencesStore = CoopUserPreferencesStore();
+  final CoopSavedProductsStore _savedProductsStore = CoopSavedProductsStore();
+
   bool _loading = true;
   Map<String, CoopUserPreferenceOverride> _overrides =
       <String, CoopUserPreferenceOverride>{};
+  Map<String, CoopSavedProduct> _savedProducts = <String, CoopSavedProduct>{};
 
   @override
   void initState() {
     super.initState();
-    _loadOverrides();
+    _loadAll();
   }
 
-  Future<void> _loadOverrides() async {
+  Future<void> _loadAll() async {
     final Map<String, CoopUserPreferenceOverride> overrides =
         await _preferencesStore.loadOverrides();
+    final Map<String, CoopSavedProduct> savedProducts =
+        await _savedProductsStore.loadSavedProducts();
 
     if (!mounted) return;
     setState(() {
       _overrides = overrides;
+      _savedProducts = savedProducts;
       _loading = false;
     });
   }
@@ -52,13 +62,33 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         builder: (_) => const CoopPreferencesScreen(),
       ),
     );
-    await _loadOverrides();
+    await _loadAll();
+  }
+
+  Future<void> _openSavedProducts() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const CoopSavedProductsScreen(),
+      ),
+    );
+    await _loadAll();
   }
 
   Future<void> _openCartPrep(List<PurchasableItem> items) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CoopCartPrepScreen(items: items),
+      ),
+    );
+  }
+
+  Future<void> _openSavedProductInWebView(CoopSavedProduct product) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CoopProductWebViewScreen(
+          title: product.productLabel,
+          productUrl: product.productUrl,
+        ),
       ),
     );
   }
@@ -105,6 +135,11 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         title: const Text('Shop-Vorschau'),
         actions: <Widget>[
           IconButton(
+            onPressed: _openSavedProducts,
+            icon: const Icon(Icons.bookmark_outline),
+            tooltip: 'Gespeicherte Produkte',
+          ),
+          IconButton(
             onPressed: _openPreferences,
             icon: const Icon(Icons.tune),
             tooltip: 'Coop-Präferenzen',
@@ -129,8 +164,8 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Hier siehst du kaufbare Artikel mit Coop-orientierten Suchbegriffen '
-                    'und – wo vorhanden – bevorzugten Produktprofilen.',
+                    'Hier siehst du kaufbare Artikel mit Coop-orientierten Suchbegriffen, '
+                    'Produktprofilen und – wenn vorhanden – gespeicherten Standardprodukten.',
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
@@ -163,6 +198,10 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                 ),
               ),
               ...grouped[category]!.map((PurchasableItem item) {
+                final String canonicalKey =
+                    IngredientFormatter.canonicalMergeName(item.displayName);
+                final CoopSavedProduct? savedProduct = _savedProducts[canonicalKey];
+
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(4),
@@ -171,7 +210,12 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                       children: <Widget>[
                         ListTile(
                           title: Text(item.displayName),
-                          subtitle: Text(_subtitleFor(item)),
+                          subtitle: Text(
+                            _subtitleFor(
+                              item: item,
+                              savedProduct: savedProduct,
+                            ),
+                          ),
                         ),
                         Padding(
                           padding: const EdgeInsets.only(
@@ -183,6 +227,24 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: <Widget>[
+                              if (savedProduct != null &&
+                                  savedProduct.productUrl.trim().isNotEmpty)
+                                FilledButton.icon(
+                                  onPressed: () => _openSavedProductInWebView(
+                                    savedProduct,
+                                  ),
+                                  icon: const Icon(Icons.smart_display),
+                                  label: const Text('Im WebView öffnen'),
+                                ),
+                              if (savedProduct != null &&
+                                  savedProduct.productUrl.trim().isNotEmpty)
+                                FilledButton.tonalIcon(
+                                  onPressed: () => _openDirectUrl(
+                                    savedProduct.productUrl,
+                                  ),
+                                  icon: const Icon(Icons.open_in_new),
+                                  label: const Text('Extern öffnen'),
+                                ),
                               ElevatedButton.icon(
                                 onPressed: () => _openCoopSearch(
                                   item.coopSearchQuery,
@@ -218,6 +280,11 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         ],
       ),
     );
+  }
+
+  static Future<void> _openDirectUrl(String url) async {
+    final Uri uri = Uri.parse(url);
+    await _launchExternalUri(uri);
   }
 
   static Future<void> _openCoopSearch(String query) async {
@@ -379,7 +446,10 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
     }
   }
 
-  static String _subtitleFor(PurchasableItem item) {
+  static String _subtitleFor({
+    required PurchasableItem item,
+    required CoopSavedProduct? savedProduct,
+  }) {
     final String quantityText = item.quantity == item.quantity.roundToDouble()
         ? item.quantity.toInt().toString()
         : item.quantity.toStringAsFixed(2).replaceAll('.', ',');
@@ -391,6 +461,11 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
       'Allgemeine Suche: ${item.shopSearchQuery}',
       'Coop-Suche: ${item.coopSearchQuery}',
     ];
+
+    if (savedProduct != null) {
+      lines.add('Gespeichertes Produkt: ${savedProduct.productLabel}');
+      lines.add('Gespeicherter Link: ${savedProduct.productUrl}');
+    }
 
     if (item.coopPreferredProductLabel != null &&
         item.coopPreferredProductLabel!.isNotEmpty) {
