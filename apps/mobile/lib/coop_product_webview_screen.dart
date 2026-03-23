@@ -19,6 +19,7 @@ class CoopProductWebViewScreen extends StatefulWidget {
 class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
   late final WebViewController _controller;
   bool _loading = true;
+  bool _runningAction = false;
   String? _lastJsResult;
 
   @override
@@ -144,7 +145,9 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
       text.includes('kasse') ||
       text.includes('hinzu') ||
       text.includes('kaufen') ||
-      text.includes('buy');
+      text.includes('buy') ||
+      text.includes('productbasketplus') ||
+      text.includes('productbasketminus');
 
     if (!interesting) continue;
 
@@ -160,7 +163,7 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
     });
   }
 
-  return JSON.stringify(results.slice(0, 25), null, 2);
+  return JSON.stringify(results.slice(0, 40), null, 2);
 })();
 ''';
 
@@ -207,7 +210,54 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
   }
 
   Future<void> _runAddToCartJs() async {
-    const String script = r'''
+    if (_runningAction) return;
+
+    setState(() {
+      _runningAction = true;
+    });
+
+    const String stateScript = r'''
+(() => {
+  function normalize(text) {
+    return (text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function visible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    if (!style) return true;
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  const plus = document.querySelector('[data-testauto^="productbasketplus"]');
+  const minus = document.querySelector('[data-testauto^="productbasketminus"]');
+  const basket = document.querySelector('[data-testauto="basket"]');
+
+  const basketText = basket
+    ? normalize(
+        (basket.innerText || '') + ' ' +
+        (basket.getAttribute('aria-label') || '') + ' ' +
+        (basket.getAttribute('title') || '')
+      )
+    : '';
+
+  return JSON.stringify({
+    href: window.location.href,
+    hasPlus: !!(plus && visible(plus)),
+    hasMinus: !!(minus && visible(minus)),
+    basketText: basketText
+  });
+})();
+''';
+
+    const String clickScript = r'''
 (() => {
   function normalize(text) {
     return (text || '')
@@ -247,6 +297,12 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
     return 'wrong-page:cart';
   }
 
+  const plusButton = document.querySelector('[data-testauto^="productbasketplus"]');
+  if (plusButton && visible(plusButton)) {
+    plusButton.click();
+    return 'clicked:productbasketplus';
+  }
+
   const candidates = Array.from(
     document.querySelectorAll('button, a, input[type="button"], input[type="submit"]')
   );
@@ -272,7 +328,9 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
     'mein warenkorb',
     'zur kasse',
     'checkout',
-    'basket value'
+    'basket value',
+    'productbasketminus',
+    'productbasketplus'
   ];
 
   let best = null;
@@ -326,16 +384,32 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
 ''';
 
     try {
-      final Object result =
-          await _controller.runJavaScriptReturningResult(script);
+      final Object before = await _controller.runJavaScriptReturningResult(
+        stateScript,
+      );
+
+      final Object clickResult =
+          await _controller.runJavaScriptReturningResult(clickScript);
+
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+
+      final Object after = await _controller.runJavaScriptReturningResult(
+        stateScript,
+      );
+
+      final String result =
+          'before=$before\nclick=$clickResult\nafter=$after';
 
       if (!mounted) return;
       setState(() {
-        _lastJsResult = result.toString();
+        _lastJsResult = result;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('JS-Ergebnis: $_lastJsResult')),
+        SnackBar(
+          content: Text('JS-Lauf abgeschlossen'),
+          duration: const Duration(seconds: 2),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -346,6 +420,12 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('JS-Fehler: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _runningAction = false;
+        });
+      }
     }
   }
 
@@ -395,7 +475,7 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
           ),
           IconButton(
             tooltip: 'JS Add-to-cart testen',
-            onPressed: _runAddToCartJs,
+            onPressed: _runningAction ? null : _runAddToCartJs,
             icon: const Icon(Icons.play_arrow),
           ),
         ],
@@ -413,8 +493,8 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
                 color: Colors.black87,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Text(
-                    'Letztes JS-Ergebnis: $_lastJsResult',
+                  child: SelectableText(
+                    'Letztes JS-Ergebnis:\n$_lastJsResult',
                     style: const TextStyle(color: Colors.white),
                   ),
                 ),
