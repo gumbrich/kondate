@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'coop_assistant_screen.dart';
+import 'coop_saved_product.dart';
+import 'coop_saved_products_store.dart';
+import 'ingredient_formatter.dart';
 import 'purchasable_item.dart';
 
 class CoopCartPrepScreen extends StatefulWidget {
@@ -44,6 +48,13 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
     return item.unit.isEmpty ? q : '$q ${item.unit}';
   }
 
+  String _searchQuery(PurchasableItem item) {
+    return (item.coopPreferredSearchQuery != null &&
+            item.coopPreferredSearchQuery!.trim().isNotEmpty)
+        ? item.coopPreferredSearchQuery!
+        : item.coopSearchQuery;
+  }
+
   Future<void> _openCoopSearch(String query) async {
     final Uri uri = Uri.https(
       'www.coop.ch',
@@ -59,6 +70,43 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
     if (!ok) {
       throw Exception('Konnte URL nicht öffnen: $uri');
     }
+  }
+
+  Future<void> _openAssistant() async {
+    final CoopSavedProductsStore store = CoopSavedProductsStore();
+    final Map<String, CoopSavedProduct> saved =
+        await store.loadSavedProducts();
+
+    final List<CoopSavedProduct> products = <CoopSavedProduct>[];
+
+    for (final PurchasableItem item in _selectedItems) {
+      final String canonicalKey =
+          IngredientFormatter.canonicalMergeName(item.displayName);
+      final CoopSavedProduct? savedProduct = saved[canonicalKey];
+
+      if (savedProduct != null && savedProduct.productUrl.trim().isNotEmpty) {
+        products.add(savedProduct);
+      }
+    }
+
+    if (!mounted) return;
+
+    if (products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Für die ausgewählten Artikel sind keine gespeicherten Coop-Produkte vorhanden.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CoopAssistantScreen(products: products),
+      ),
+    );
   }
 
   @override
@@ -89,9 +137,11 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                   Text(
                     'Ausgewählt: ${selectedItems.length} von ${widget.items.length}',
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Hier kannst du festlegen, welche Artikel du jetzt bei Coop zusammensuchen willst.',
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: selectedItems.isEmpty ? null : _openAssistant,
+                    icon: const Icon(Icons.auto_mode),
+                    label: const Text('Coop-Assistent starten'),
                   ),
                 ],
               ),
@@ -102,11 +152,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
             final PurchasableItem item = widget.items[index];
             final bool checked = _selected[index] ?? false;
 
-            final String searchQuery =
-                (item.coopPreferredSearchQuery != null &&
-                        item.coopPreferredSearchQuery!.trim().isNotEmpty)
-                    ? item.coopPreferredSearchQuery!
-                    : item.coopSearchQuery;
+            final String searchQuery = _searchQuery(item);
 
             return Card(
               child: Padding(
@@ -141,7 +187,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                                 ? () => _openCoopSearch(searchQuery)
                                 : null,
                             icon: const Icon(Icons.storefront_outlined),
-                            label: const Text('Diesen Artikel suchen'),
+                            label: const Text('Einzeln öffnen'),
                           ),
                         ],
                       ),
