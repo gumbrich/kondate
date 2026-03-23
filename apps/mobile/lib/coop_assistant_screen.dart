@@ -21,6 +21,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   int _index = 0;
   bool _loading = true;
   bool _running = false;
+  bool _autoAdvance = true;
   String? _lastResult;
 
   CoopSavedProduct get _current => widget.products[_index];
@@ -77,6 +78,20 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       _lastResult = null;
     });
     _loadCurrent();
+  }
+
+  Future<void> _advanceIfPossible() async {
+    if (_index < widget.products.length - 1) {
+      _next();
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Letztes Produkt erreicht'),
+      ),
+    );
   }
 
   Future<void> _runAdd() async {
@@ -260,22 +275,37 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       final Object clickResult =
           await _controller.runJavaScriptReturningResult(clickScript);
 
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await Future<void>.delayed(const Duration(milliseconds: 1400));
 
       final Object after =
           await _controller.runJavaScriptReturningResult(stateScript);
 
+      final String clickText = clickResult.toString();
+      final String result = 'before=$before\nclick=$clickText\nafter=$after';
+
       if (!mounted) return;
       setState(() {
-        _lastResult = 'before=$before\nclick=$clickResult\nafter=$after';
+        _lastResult = result;
       });
 
+      final bool success = clickText.startsWith('clicked:');
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Produktaktion ausgeführt'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(
+            success
+                ? 'Produktaktion erfolgreich ausgelöst'
+                : 'Kein passender Add-to-cart-Kandidat gefunden',
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
+
+      if (success && _autoAdvance) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+        await _advanceIfPossible();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -335,6 +365,17 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                   Text(
                     _current.productUrl,
                     style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Automatisch zum nächsten Produkt'),
+                    value: _autoAdvance,
+                    onChanged: (bool value) {
+                      setState(() {
+                        _autoAdvance = value;
+                      });
+                    },
                   ),
                 ],
               ),
