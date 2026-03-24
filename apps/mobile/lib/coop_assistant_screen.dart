@@ -22,6 +22,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   bool _loading = true;
   bool _running = false;
   bool _autoAdvance = true;
+  bool _fullAutoRun = false;
   String? _lastResult;
 
   CoopSavedProduct get _current => widget.products[_index];
@@ -76,31 +77,38 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     setState(() {
       _index--;
       _lastResult = null;
+      _fullAutoRun = false;
     });
     _loadCurrent();
   }
 
   Future<void> _advanceIfPossible() async {
     if (_index < widget.products.length - 1) {
-      _next();
+      setState(() {
+        _index++;
+        _lastResult = null;
+      });
+      await _loadCurrent();
       return;
     }
 
     if (!mounted) return;
+    setState(() {
+      _fullAutoRun = false;
+    });
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Letztes Produkt erreicht'),
+        content: Text('Auto-Run abgeschlossen'),
       ),
     );
   }
 
-  Future<void> _runAdd() async {
-    if (_running) return;
+  Future<void> _waitForPageToSettle() async {
+    await Future<void>.delayed(const Duration(milliseconds: 1800));
+  }
 
-    setState(() {
-      _running = true;
-    });
-
+  Future<bool> _runAddInternal() async {
     const String stateScript = r'''
 (() => {
   function normalize(text) {
@@ -268,27 +276,39 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 })();
 ''';
 
+    final Object before =
+        await _controller.runJavaScriptReturningResult(stateScript);
+
+    final Object clickResult =
+        await _controller.runJavaScriptReturningResult(clickScript);
+
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+
+    final Object after =
+        await _controller.runJavaScriptReturningResult(stateScript);
+
+    final String clickText = clickResult.toString();
+    final String result = 'before=$before\nclick=$clickText\nafter=$after';
+
+    if (!mounted) return false;
+    setState(() {
+      _lastResult = result;
+    });
+
+    return clickText.startsWith('clicked:');
+  }
+
+  Future<void> _runAdd() async {
+    if (_running) return;
+
+    setState(() {
+      _running = true;
+    });
+
     try {
-      final Object before =
-          await _controller.runJavaScriptReturningResult(stateScript);
-
-      final Object clickResult =
-          await _controller.runJavaScriptReturningResult(clickScript);
-
-      await Future<void>.delayed(const Duration(milliseconds: 1400));
-
-      final Object after =
-          await _controller.runJavaScriptReturningResult(stateScript);
-
-      final String clickText = clickResult.toString();
-      final String result = 'before=$before\nclick=$clickText\nafter=$after';
+      final bool success = await _runAddInternal();
 
       if (!mounted) return;
-      setState(() {
-        _lastResult = result;
-      });
-
-      final bool success = clickText.startsWith('clicked:');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -324,6 +344,79 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     }
   }
 
+  Future<void> _runAll() async {
+    if (_running) return;
+
+    setState(() {
+      _running = true;
+      _fullAutoRun = true;
+    });
+
+    try {
+      while (mounted && _fullAutoRun) {
+        await _waitForPageToSettle();
+        final bool success = await _runAddInternal();
+
+        if (!mounted) return;
+
+        if (!success) {
+          setState(() {
+            _fullAutoRun = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Auto-Run gestoppt: Kein passender Add-to-cart-Kandidat gefunden',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          break;
+        }
+
+        if (_index >= widget.products.length - 1) {
+          setState(() {
+            _fullAutoRun = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Auto-Run abgeschlossen'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          break;
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await _advanceIfPossible();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _lastResult = 'error: $e';
+        _fullAutoRun = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Auto-Run Fehler: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _running = false;
+        });
+      }
+    }
+  }
+
+  void _stopAutoRun() {
+    setState(() {
+      _fullAutoRun = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool hasPrev = _index > 0;
@@ -335,7 +428,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
         actions: <Widget>[
           IconButton(
             tooltip: 'Neu laden',
-            onPressed: _reload,
+            onPressed: _running ? null : _reload,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -371,11 +464,13 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Automatisch zum nächsten Produkt'),
                     value: _autoAdvance,
-                    onChanged: (bool value) {
-                      setState(() {
-                        _autoAdvance = value;
-                      });
-                    },
+                    onChanged: _running
+                        ? null
+                        : (bool value) {
+                            setState(() {
+                              _autoAdvance = value;
+                            });
+                          },
                   ),
                 ],
               ),
@@ -406,7 +501,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
               runSpacing: 8,
               children: <Widget>[
                 OutlinedButton.icon(
-                  onPressed: hasPrev ? _prev : null,
+                  onPressed: (_running || !hasPrev) ? null : _prev,
                   icon: const Icon(Icons.arrow_back),
                   label: const Text('Zurück'),
                 ),
@@ -416,10 +511,22 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                   label: Text(_running ? 'Läuft...' : 'Automatisch hinzufügen'),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: hasNext ? _next : null,
+                  onPressed: (_running || !hasNext) ? null : _next,
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('Weiter'),
                 ),
+                if (!_fullAutoRun)
+                  ElevatedButton.icon(
+                    onPressed: _running ? null : _runAll,
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('Auto-Run starten'),
+                  ),
+                if (_fullAutoRun)
+                  ElevatedButton.icon(
+                    onPressed: _stopAutoRun,
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: const Text('Auto-Run stoppen'),
+                  ),
               ],
             ),
           ),
