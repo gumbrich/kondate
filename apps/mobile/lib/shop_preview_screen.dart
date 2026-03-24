@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
 import 'coop_cart_prep_screen.dart';
+import 'coop_login_screen.dart';
 import 'coop_preferences_screen.dart';
 import 'coop_product_webview_screen.dart';
 import 'coop_saved_product.dart';
@@ -93,6 +94,14 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
     );
   }
 
+  Future<void> _openCoopLogin() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const CoopLoginScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -135,6 +144,11 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         title: const Text('Shop-Vorschau'),
         actions: <Widget>[
           IconButton(
+            onPressed: _openCoopLogin,
+            icon: const Icon(Icons.login),
+            tooltip: 'Coop-Login',
+          ),
+          IconButton(
             onPressed: _openSavedProducts,
             icon: const Icon(Icons.bookmark_outline),
             tooltip: 'Gespeicherte Produkte',
@@ -168,12 +182,23 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                     'Produktprofilen und – wenn vorhanden – gespeicherten Standardprodukten.',
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: purchasableItems.isEmpty
-                        ? null
-                        : () => _openCartPrep(purchasableItems),
-                    icon: const Icon(Icons.shopping_cart_outlined),
-                    label: const Text('Warenkorb vorbereiten'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      FilledButton.icon(
+                        onPressed: _openCoopLogin,
+                        icon: const Icon(Icons.login),
+                        label: const Text('Zuerst bei Coop einloggen'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: purchasableItems.isEmpty
+                            ? null
+                            : () => _openCartPrep(purchasableItems),
+                        icon: const Icon(Icons.shopping_cart_outlined),
+                        label: const Text('Warenkorb vorbereiten'),
+                      ),
+                    ],
                   ),
                 ],
               ),
