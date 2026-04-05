@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
 import 'coop_cart_prep_screen.dart';
+import 'coop_credentials_screen.dart';
 import 'coop_login_screen.dart';
 import 'coop_preferences_screen.dart';
 import 'coop_product_webview_screen.dart';
@@ -75,6 +76,14 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
     await _loadAll();
   }
 
+  Future<void> _openCredentials() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const CoopCredentialsScreen(),
+      ),
+    );
+  }
+
   Future<void> _openCartPrep(List<PurchasableItem> items) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -144,6 +153,11 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         title: const Text('Shop-Vorschau'),
         actions: <Widget>[
           IconButton(
+            onPressed: _openCredentials,
+            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Coop-Zugangsdaten',
+          ),
+          IconButton(
             onPressed: _openCoopLogin,
             icon: const Icon(Icons.login),
             tooltip: 'Coop-Login',
@@ -187,9 +201,14 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                     runSpacing: 8,
                     children: <Widget>[
                       FilledButton.icon(
+                        onPressed: _openCredentials,
+                        icon: const Icon(Icons.lock_outline),
+                        label: const Text('Zugangsdaten speichern'),
+                      ),
+                      FilledButton.icon(
                         onPressed: _openCoopLogin,
                         icon: const Icon(Icons.login),
-                        label: const Text('Zuerst bei Coop einloggen'),
+                        label: const Text('Bei Coop einloggen'),
                       ),
                       FilledButton.tonalIcon(
                         onPressed: purchasableItems.isEmpty
