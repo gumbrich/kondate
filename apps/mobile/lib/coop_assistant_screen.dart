@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'coop_credentials_store.dart';
 import 'coop_saved_product.dart';
+
+enum _AssistantItemStatus {
+  offen,
+  erfolgreich,
+  uebersprungen,
+  fehler,
+}
 
 class CoopAssistantScreen extends StatefulWidget {
   final List<CoopSavedProduct> products;
@@ -17,6 +25,8 @@ class CoopAssistantScreen extends StatefulWidget {
 
 class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   late final WebViewController _controller;
+  final CoopCredentialsStore _credentialsStore = CoopCredentialsStore();
+  late final List<_AssistantItemStatus> _statuses;
 
   int _index = 0;
   bool _loading = true;
@@ -26,10 +36,16 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   String? _lastResult;
 
   CoopSavedProduct get _current => widget.products[_index];
+  _AssistantItemStatus get _currentStatus => _statuses[_index];
 
   @override
   void initState() {
     super.initState();
+
+    _statuses = List<_AssistantItemStatus>.filled(
+      widget.products.length,
+      _AssistantItemStatus.offen,
+    );
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -59,6 +75,24 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 
   Future<void> _reload() async {
     await _controller.reload();
+  }
+
+  int get _offenCount =>
+      _statuses.where((s) => s == _AssistantItemStatus.offen).length;
+
+  int get _erfolgreichCount =>
+      _statuses.where((s) => s == _AssistantItemStatus.erfolgreich).length;
+
+  int get _uebersprungenCount =>
+      _statuses.where((s) => s == _AssistantItemStatus.uebersprungen).length;
+
+  int get _fehlerCount =>
+      _statuses.where((s) => s == _AssistantItemStatus.fehler).length;
+
+  void _markCurrent(_AssistantItemStatus status) {
+    setState(() {
+      _statuses[_index] = status;
+    });
   }
 
   void _next() {
@@ -106,6 +140,180 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 
   Future<void> _waitForPageToSettle() async {
     await Future<void>.delayed(const Duration(milliseconds: 1800));
+  }
+
+  String _jsEscape(String input) {
+    return input
+        .replaceAll(r'\', r'\\')
+        .replaceAll("'", r"\'")
+        .replaceAll('\n', r'\n')
+        .replaceAll('\r', r'\r');
+  }
+
+  Future<String> _inspectLoginState() async {
+    const String script = r'''
+(() => {
+  function normalize(text) {
+    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  const href = normalize(window.location.href);
+  const title = normalize(document.title);
+
+  const hasPasswordInput = !!document.querySelector('input[type="password"]');
+  const emailInput = document.querySelector(
+    'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[id*="user"]'
+  );
+
+  const loginHints =
+    href.includes('login') ||
+    href.includes('anmelden') ||
+    title.includes('login') ||
+    title.includes('anmelden') ||
+    hasPasswordInput;
+
+  return JSON.stringify({
+    href: window.location.href,
+    title: document.title,
+    loginPage: !!loginHints,
+    hasPasswordInput: hasPasswordInput,
+    hasEmailInput: !!emailInput
+  });
+})();
+''';
+
+    final Object result =
+        await _controller.runJavaScriptReturningResult(script);
+    return result.toString();
+  }
+
+  Future<String> _fillCredentialsIfNeeded() async {
+    final CoopCredentials credentials = await _credentialsStore.load();
+
+    if (!credentials.isComplete) {
+      return 'credentials-missing';
+    }
+
+    final String email = _jsEscape(credentials.email);
+    final String password = _jsEscape(credentials.password);
+
+    final String script = '''
+(() => {
+  function findInput(candidates) {
+    for (const selector of candidates) {
+      const el = document.querySelector(selector);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function setValue(el, value) {
+    if (!el) return false;
+    el.focus();
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  const emailInput = findInput([
+    'input[type="email"]',
+    'input[name="email"]',
+    'input[name="username"]',
+    'input[id*="email"]',
+    'input[id*="user"]'
+  ]);
+
+  const passwordInput = findInput([
+    'input[type="password"]',
+    'input[name="password"]',
+    'input[id*="password"]'
+  ]);
+
+  const emailOk = setValue(emailInput, '$email');
+  const passwordOk = setValue(passwordInput, '$password');
+
+  return JSON.stringify({
+    emailFound: !!emailInput,
+    passwordFound: !!passwordInput,
+    emailFilled: emailOk,
+    passwordFilled: passwordOk
+  });
+})();
+''';
+
+    final Object result =
+        await _controller.runJavaScriptReturningResult(script);
+    return result.toString();
+  }
+
+  Future<String> _submitLoginIfPossible() async {
+    const String script = r'''
+(() => {
+  function normalize(text) {
+    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function visible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    if (!style) return true;
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+
+  const candidates = buttons.filter((el) => {
+    if (!visible(el)) return false;
+    const text = normalize(
+      (el.innerText || '') + ' ' +
+      (el.value || '') + ' ' +
+      (el.getAttribute('aria-label') || '') + ' ' +
+      (el.getAttribute('title') || '')
+    );
+
+    return (
+      text.includes('anmelden') ||
+      text.includes('login') ||
+      text.includes('log in') ||
+      text.includes('sign in')
+    );
+  });
+
+  if (candidates.length === 0) {
+    return 'no-login-button-match';
+  }
+
+  candidates[0].click();
+  return 'clicked-login-button';
+})();
+''';
+
+    final Object result =
+        await _controller.runJavaScriptReturningResult(script);
+    return result.toString();
+  }
+
+  Future<String> _ensureLoggedInIfNeeded() async {
+    final String before = await _inspectLoginState();
+
+    if (!before.toLowerCase().contains('"loginpage":true')) {
+      return 'not-on-login-page';
+    }
+
+    final String fillResult = await _fillCredentialsIfNeeded();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    final String submitResult = await _submitLoginIfPossible();
+    await Future<void>.delayed(const Duration(milliseconds: 2200));
+
+    final String after = await _inspectLoginState();
+
+    return 'login-before=$before\nlogin-fill=$fillResult\nlogin-submit=$submitResult\nlogin-after=$after';
   }
 
   Future<bool> _runAddInternal() async {
@@ -276,6 +484,8 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 })();
 ''';
 
+    final String loginResult = await _ensureLoggedInIfNeeded();
+
     final Object before =
         await _controller.runJavaScriptReturningResult(stateScript);
 
@@ -288,7 +498,8 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
         await _controller.runJavaScriptReturningResult(stateScript);
 
     final String clickText = clickResult.toString();
-    final String result = 'before=$before\nclick=$clickText\nafter=$after';
+    final String result =
+        '$loginResult\nbefore=$before\nclick=$clickText\nafter=$after';
 
     if (!mounted) return false;
     setState(() {
@@ -310,6 +521,12 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 
       if (!mounted) return;
 
+      if (success) {
+        _markCurrent(_AssistantItemStatus.erfolgreich);
+      } else {
+        _markCurrent(_AssistantItemStatus.fehler);
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -328,6 +545,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      _markCurrent(_AssistantItemStatus.fehler);
       setState(() {
         _lastResult = 'error: $e';
       });
@@ -358,6 +576,12 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
         final bool success = await _runAddInternal();
 
         if (!mounted) return;
+
+        if (success) {
+          _markCurrent(_AssistantItemStatus.erfolgreich);
+        } else {
+          _markCurrent(_AssistantItemStatus.fehler);
+        }
 
         if (!success) {
           setState(() {
@@ -394,6 +618,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      _markCurrent(_AssistantItemStatus.fehler);
       setState(() {
         _lastResult = 'error: $e';
         _fullAutoRun = false;
@@ -415,6 +640,37 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     setState(() {
       _fullAutoRun = false;
     });
+  }
+
+  void _skipCurrent() {
+    _markCurrent(_AssistantItemStatus.uebersprungen);
+    _advanceIfPossible();
+  }
+
+  Color _statusColor(_AssistantItemStatus status) {
+    switch (status) {
+      case _AssistantItemStatus.offen:
+        return Colors.grey.shade300;
+      case _AssistantItemStatus.erfolgreich:
+        return Colors.green.shade200;
+      case _AssistantItemStatus.uebersprungen:
+        return Colors.orange.shade200;
+      case _AssistantItemStatus.fehler:
+        return Colors.red.shade200;
+    }
+  }
+
+  String _statusLabel(_AssistantItemStatus status) {
+    switch (status) {
+      case _AssistantItemStatus.offen:
+        return 'Offen';
+      case _AssistantItemStatus.erfolgreich:
+        return 'Erfolgreich';
+      case _AssistantItemStatus.uebersprungen:
+        return 'Übersprungen';
+      case _AssistantItemStatus.fehler:
+        return 'Fehler';
+    }
   }
 
   @override
@@ -450,13 +706,31 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    _current.canonicalKey,
-                    style: const TextStyle(color: Colors.black54),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      Chip(
+                        label: Text(_current.canonicalKey),
+                      ),
+                      Chip(
+                        backgroundColor: _statusColor(_currentStatus),
+                        label: Text(_statusLabel(_currentStatus)),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
                     _current.productUrl,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Zusammenfassung: '
+                    '$_erfolgreichCount erfolgreich, '
+                    '$_uebersprungenCount übersprungen, '
+                    '$_fehlerCount Fehler, '
+                    '$_offenCount offen',
                     style: const TextStyle(fontSize: 12),
                   ),
                   const SizedBox(height: 10),
@@ -514,6 +788,18 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                   onPressed: (_running || !hasNext) ? null : _next,
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('Weiter'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _skipCurrent,
+                  icon: const Icon(Icons.skip_next),
+                  label: const Text('Überspringen'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running
+                      ? null
+                      : () => _markCurrent(_AssistantItemStatus.erfolgreich),
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('Als erfolgreich markieren'),
                 ),
                 if (!_fullAutoRun)
                   ElevatedButton.icon(
