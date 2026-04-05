@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter generated
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Podfile.lock
+linux/flutter/generated_*
+windows/flutter/generated_*
+
