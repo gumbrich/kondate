@@ -89,10 +89,25 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   int get _fehlerCount =>
       _statuses.where((s) => s == _AssistantItemStatus.fehler).length;
 
+  bool _isRetryCandidate(_AssistantItemStatus status) {
+    return status == _AssistantItemStatus.offen ||
+        status == _AssistantItemStatus.fehler;
+  }
+
   void _markCurrent(_AssistantItemStatus status) {
     setState(() {
       _statuses[_index] = status;
     });
+  }
+
+  Future<void> _goToIndex(int index) async {
+    if (index < 0 || index >= widget.products.length) return;
+
+    setState(() {
+      _index = index;
+      _lastResult = null;
+    });
+    await _loadCurrent();
   }
 
   void _next() {
@@ -116,13 +131,29 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     _loadCurrent();
   }
 
+  int? _nextRetryIndexFrom(int startExclusive) {
+    for (int i = startExclusive + 1; i < _statuses.length; i++) {
+      if (_isRetryCandidate(_statuses[i])) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  int? _previousRetryIndexFrom(int startExclusive) {
+    for (int i = startExclusive - 1; i >= 0; i--) {
+      if (_isRetryCandidate(_statuses[i])) {
+        return i;
+      }
+    }
+    return null;
+  }
+
   Future<void> _advanceIfPossible() async {
-    if (_index < widget.products.length - 1) {
-      setState(() {
-        _index++;
-        _lastResult = null;
-      });
-      await _loadCurrent();
+    final int? nextIndex = _nextRetryIndexFrom(_index);
+
+    if (nextIndex != null) {
+      await _goToIndex(nextIndex);
       return;
     }
 
@@ -133,9 +164,60 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Auto-Run abgeschlossen'),
+        content: Text('Keine weiteren offenen/fehlerhaften Produkte'),
       ),
     );
+  }
+
+  Future<void> _jumpToNextProblem() async {
+    final int? nextIndex = _nextRetryIndexFrom(_index);
+    if (nextIndex == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kein nächstes offenes/fehlerhaftes Produkt gefunden'),
+        ),
+      );
+      return;
+    }
+    await _goToIndex(nextIndex);
+  }
+
+  Future<void> _jumpToPreviousProblem() async {
+    final int? prevIndex = _previousRetryIndexFrom(_index);
+    if (prevIndex == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kein vorheriges offenes/fehlerhaftes Produkt gefunden'),
+        ),
+      );
+      return;
+    }
+    await _goToIndex(prevIndex);
+  }
+
+  Future<void> _jumpToFirstProblem() async {
+    for (int i = 0; i < _statuses.length; i++) {
+      if (_isRetryCandidate(_statuses[i])) {
+        await _goToIndex(i);
+        return;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Keine offenen/fehlerhaften Produkte vorhanden'),
+      ),
+    );
+  }
+
+  void _resetOnlyProblematic() {
+    setState(() {
+      for (int i = 0; i < _statuses.length; i++) {
+        if (_statuses[i] == _AssistantItemStatus.fehler) {
+          _statuses[i] = _AssistantItemStatus.offen;
+        }
+      }
+    });
   }
 
   Future<void> _waitForPageToSettle() async {
@@ -572,6 +654,15 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
 
     try {
       while (mounted && _fullAutoRun) {
+        if (!_isRetryCandidate(_currentStatus)) {
+          final int? nextIndex = _nextRetryIndexFrom(_index);
+          if (nextIndex == null) {
+            break;
+          }
+          await _goToIndex(nextIndex);
+          await _waitForPageToSettle();
+        }
+
         await _waitForPageToSettle();
         final bool success = await _runAddInternal();
 
@@ -599,7 +690,8 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
           break;
         }
 
-        if (_index >= widget.products.length - 1) {
+        final int? nextIndex = _nextRetryIndexFrom(_index);
+        if (nextIndex == null) {
           setState(() {
             _fullAutoRun = false;
           });
@@ -614,7 +706,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
         }
 
         await Future<void>.delayed(const Duration(milliseconds: 800));
-        await _advanceIfPossible();
+        await _goToIndex(nextIndex);
       }
     } catch (e) {
       if (!mounted) return;
@@ -642,9 +734,9 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     });
   }
 
-  void _skipCurrent() {
+  Future<void> _skipCurrent() async {
     _markCurrent(_AssistantItemStatus.uebersprungen);
-    _advanceIfPossible();
+    await _advanceIfPossible();
   }
 
   Color _statusColor(_AssistantItemStatus status) {
@@ -677,6 +769,8 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   Widget build(BuildContext context) {
     final bool hasPrev = _index > 0;
     final bool hasNext = _index < widget.products.length - 1;
+    final bool hasAnyRetryCandidates =
+        _statuses.any((status) => _isRetryCandidate(status));
 
     return Scaffold(
       appBar: AppBar(
@@ -801,11 +895,37 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text('Als erfolgreich markieren'),
                 ),
+                OutlinedButton.icon(
+                  onPressed: _running || !hasAnyRetryCandidates
+                      ? null
+                      : _jumpToFirstProblem,
+                  icon: const Icon(Icons.first_page),
+                  label: const Text('Zum ersten Problem'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _jumpToPreviousProblem,
+                  icon: const Icon(Icons.keyboard_double_arrow_left),
+                  label: const Text('Vorheriges Problem'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running ? null : _jumpToNextProblem,
+                  icon: const Icon(Icons.keyboard_double_arrow_right),
+                  label: const Text('Nächstes Problem'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _running || _fehlerCount == 0
+                      ? null
+                      : _resetOnlyProblematic,
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('Fehler zurücksetzen'),
+                ),
                 if (!_fullAutoRun)
                   ElevatedButton.icon(
-                    onPressed: _running ? null : _runAll,
+                    onPressed: _running || !hasAnyRetryCandidates
+                        ? null
+                        : _runAll,
                     icon: const Icon(Icons.play_circle_outline),
-                    label: const Text('Auto-Run starten'),
+                    label: const Text('Retry Auto-Run'),
                   ),
                 if (_fullAutoRun)
                   ElevatedButton.icon(
