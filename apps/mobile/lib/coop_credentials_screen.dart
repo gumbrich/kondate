@@ -27,15 +27,22 @@ class _CoopCredentialsScreenState extends State<CoopCredentialsScreen> {
   }
 
   Future<void> _load() async {
-    final CoopCredentials credentials = await _store.load();
+    String? message;
 
-    _emailController.text = credentials.email;
-    _passwordController.text = credentials.password;
-
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-    });
+    try {
+      final CoopCredentials credentials = await _store.load();
+      _emailController.text = credentials.email;
+      _passwordController.text = credentials.password;
+    } catch (error) {
+      message = 'Fehler beim Laden der Zugangsdaten: $error';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _message = message;
+        });
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -44,16 +51,24 @@ class _CoopCredentialsScreenState extends State<CoopCredentialsScreen> {
       _message = null;
     });
 
-    await _store.save(
-      email: _emailController.text,
-      password: _passwordController.text,
-    );
+    String? message;
 
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _message = 'Gespeichert';
-    });
+    try {
+      await _store.save(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      message = 'Gespeichert';
+    } catch (error) {
+      message = 'Fehler beim Speichern der Zugangsdaten: $error';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _message = message;
+        });
+      }
+    }
   }
 
   Future<void> _clear() async {
@@ -62,15 +77,23 @@ class _CoopCredentialsScreenState extends State<CoopCredentialsScreen> {
       _message = null;
     });
 
-    await _store.clear();
-    _emailController.clear();
-    _passwordController.clear();
+    String? message;
 
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _message = 'Gelöscht';
-    });
+    try {
+      await _store.clear();
+      _emailController.clear();
+      _passwordController.clear();
+      message = 'Gelöscht';
+    } catch (error) {
+      message = 'Fehler beim Löschen der Zugangsdaten: $error';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _message = message;
+        });
+      }
+    }
   }
 
   @override
@@ -83,11 +106,7 @@ class _CoopCredentialsScreenState extends State<CoopCredentialsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
