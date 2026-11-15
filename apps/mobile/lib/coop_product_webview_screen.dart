@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'coop_basket_service.dart';
+import 'coop_basket_webview.dart';
+
 class CoopProductWebViewScreen extends StatefulWidget {
   final String title;
   final String productUrl;
@@ -18,6 +21,7 @@ class CoopProductWebViewScreen extends StatefulWidget {
 
 class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
   late final WebViewController _controller;
+  late final CoopBasketWebView _basketPage;
   bool _loading = true;
   bool _runningAction = false;
   String? _lastJsResult;
@@ -30,21 +34,33 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onWebResourceError: (WebResourceError error) {
+            if (error.errorCode == -999) {
+              return; // WKWebView redirect cancellation.
+            }
+            if (error.isForMainFrame == true) {
+              _basketPage.onPageError();
+              if (mounted) setState(() => _loading = false);
+            }
+          },
           onPageStarted: (_) {
+            _basketPage.onPageStarted();
             if (!mounted) return;
             setState(() {
               _loading = true;
             });
           },
           onPageFinished: (_) {
+            _basketPage.onPageFinished();
             if (!mounted) return;
             setState(() {
               _loading = false;
             });
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.productUrl));
+      );
+    _basketPage = CoopBasketWebView(_controller);
+    _controller.loadRequest(Uri.parse(widget.productUrl));
   }
 
   Future<void> _reload() async {
@@ -62,17 +78,18 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
 ''';
 
     try {
-      final Object result =
-          await _controller.runJavaScriptReturningResult(script);
+      final Object result = await _controller.runJavaScriptReturningResult(
+        script,
+      );
 
       if (!mounted) return;
       setState(() {
         _lastJsResult = result.toString();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Seite geprüft: $_lastJsResult')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Seite geprüft: $_lastJsResult')));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -168,8 +185,9 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
 ''';
 
     try {
-      final Object result =
-          await _controller.runJavaScriptReturningResult(script);
+      final Object result = await _controller.runJavaScriptReturningResult(
+        script,
+      );
 
       if (!mounted) return;
 
@@ -210,222 +228,63 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
   }
 
   Future<void> _runAddToCartJs() async {
-    if (_runningAction) return;
-
-    setState(() {
-      _runningAction = true;
-    });
-
-    const String stateScript = r'''
-(() => {
-  function normalize(text) {
-    return (text || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  function visible(el) {
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    if (!style) return true;
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  const plus = document.querySelector('[data-testauto^="productbasketplus"]');
-  const minus = document.querySelector('[data-testauto^="productbasketminus"]');
-  const basket = document.querySelector('[data-testauto="basket"]');
-
-  const basketText = basket
-    ? normalize(
-        (basket.innerText || '') + ' ' +
-        (basket.getAttribute('aria-label') || '') + ' ' +
-        (basket.getAttribute('title') || '')
-      )
-    : '';
-
-  return JSON.stringify({
-    href: window.location.href,
-    hasPlus: !!(plus && visible(plus)),
-    hasMinus: !!(minus && visible(minus)),
-    basketText: basketText
-  });
-})();
-''';
-
-    const String clickScript = r'''
-(() => {
-  function normalize(text) {
-    return (text || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  function visible(el) {
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    if (!style) return true;
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  function attrs(el) {
-    return normalize([
-      el.innerText || '',
-      el.textContent || '',
-      el.value || '',
-      el.getAttribute('aria-label') || '',
-      el.getAttribute('title') || '',
-      el.id || '',
-      el.className || '',
-      el.getAttribute('data-testid') || '',
-      el.getAttribute('data-testauto') || '',
-      el.getAttribute('name') || ''
-    ].join(' '));
-  }
-
-  const currentUrl = normalize(window.location.href);
-  if (currentUrl.includes('/cart') || currentUrl.includes('/basket')) {
-    return 'wrong-page:cart';
-  }
-
-  const plusButton = document.querySelector('[data-testauto^="productbasketplus"]');
-  if (plusButton && visible(plusButton)) {
-    plusButton.click();
-    return 'clicked:productbasketplus';
-  }
-
-  const candidates = Array.from(
-    document.querySelectorAll('button, a, input[type="button"], input[type="submit"]')
-  );
-
-  const strongPositivePhrases = [
-    'in den warenkorb',
-    'zum warenkorb hinzufügen',
-    'zum warenkorb hinzufugen',
-    'add to cart'
-  ];
-
-  const weakPositivePhrases = [
-    'hinzufügen',
-    'hinzufugen',
-    'add'
-  ];
-
-  const negativePhrases = [
-    'warenkorb wert',
-    'öffnet mini-warenkorb',
-    'oeffnet mini-warenkorb',
-    'mini-warenkorb',
-    'mein warenkorb',
-    'zur kasse',
-    'checkout',
-    'basket value',
-    'productbasketminus',
-    'productbasketplus'
-  ];
-
-  let best = null;
-  let bestScore = -9999;
-
-  for (const el of candidates) {
-    if (!visible(el)) continue;
-
-    const text = attrs(el);
-    if (!text) continue;
-
-    let score = 0;
-
-    for (const phrase of strongPositivePhrases) {
-      if (text.includes(phrase)) score += 100;
-    }
-
-    for (const phrase of weakPositivePhrases) {
-      if (text.includes(phrase)) score += 20;
-    }
-
-    for (const phrase of negativePhrases) {
-      if (text.includes(phrase)) score -= 200;
-    }
-
-    if (text === 'warenkorb' || text === 'basket' || text === 'cart') {
-      score -= 500;
-    }
-
-    if (
-      text.includes('addtocart') ||
-      text.includes('add-to-cart') ||
-      text.includes('basket/detail/add')
-    ) {
-      score += 120;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = { el, text, score };
-    }
-  }
-
-  if (!best || bestScore < 50) {
-    return 'no-add-to-cart-match';
-  }
-
-  best.el.click();
-  return `clicked:${best.text}::score=${best.score}`;
-})();
-''';
-
+    if (_runningAction || _loading) return;
+    final int? target = await showDialog<int>(
+      context: context,
+      builder: (BuildContext context) {
+        int quantity = 1;
+        return StatefulBuilder(
+          builder: (context, update) => AlertDialog(
+            title: const Text('Zielmenge im Warenkorb'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Text(
+                  'Gesamtzahl der Packungen, inklusive bereits vorhandener.',
+                ),
+                DropdownButton<int>(
+                  value: quantity,
+                  items: List<DropdownMenuItem<int>>.generate(
+                    20,
+                    (i) => DropdownMenuItem<int>(
+                      value: i + 1,
+                      child: Text('${i + 1} Packung(en)'),
+                    ),
+                  ),
+                  onChanged: (value) => update(() => quantity = value ?? 1),
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Abbrechen'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, quantity),
+                child: const Text('Prüfen / ergänzen'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || target == null) return;
+    setState(() => _runningAction = true);
     try {
-      final Object before = await _controller.runJavaScriptReturningResult(
-        stateScript,
-      );
-
-      final Object clickResult =
-          await _controller.runJavaScriptReturningResult(clickScript);
-
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-
-      final Object after = await _controller.runJavaScriptReturningResult(
-        stateScript,
-      );
-
-      final String result =
-          'before=$before\nclick=$clickResult\nafter=$after';
-
+      final CoopBasketResult result = await CoopBasketService(page: _basketPage)
+          .ensureQuantity(
+            productUrl: widget.productUrl,
+            targetQuantity: target,
+            isCancelled: () => !mounted,
+          );
       if (!mounted) return;
-      setState(() {
-        _lastJsResult = result;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('JS-Lauf abgeschlossen'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _lastJsResult = 'error: $e';
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('JS-Fehler: $e')),
-      );
+      setState(() => _lastJsResult = result.message);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message)));
     } finally {
-      if (mounted) {
-        setState(() {
-          _runningAction = false;
-        });
-      }
+      if (mounted) setState(() => _runningAction = false);
     }
   }
 
@@ -436,71 +295,77 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Titel: $result')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Titel: $result')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Konnte Titel nicht lesen: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Konnte Titel nicht lesen: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Seite prüfen',
-            onPressed: _inspectPage,
-            icon: const Icon(Icons.rule_folder_outlined),
-          ),
-          IconButton(
-            tooltip: 'Kandidaten prüfen',
-            onPressed: _inspectCandidates,
-            icon: const Icon(Icons.list_alt),
-          ),
-          IconButton(
-            tooltip: 'Titel testen',
-            onPressed: _inspectTitle,
-            icon: const Icon(Icons.info_outline),
-          ),
-          IconButton(
-            tooltip: 'Neu laden',
-            onPressed: _reload,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'JS Add-to-cart testen',
-            onPressed: _runningAction ? null : _runAddToCartJs,
-            icon: const Icon(Icons.play_arrow),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: <Widget>[
-          WebViewWidget(controller: _controller),
-          if (_loading) const LinearProgressIndicator(),
-          if (_lastJsResult != null)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
-              child: Card(
-                color: Colors.black87,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SelectableText(
-                    'Letztes JS-Ergebnis:\n$_lastJsResult',
-                    style: const TextStyle(color: Colors.white),
+    return PopScope(
+      canPop: !_runningAction,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: <Widget>[
+            IconButton(
+              tooltip: 'Seite prüfen',
+              onPressed: _inspectPage,
+              icon: const Icon(Icons.rule_folder_outlined),
+            ),
+            IconButton(
+              tooltip: 'Kandidaten prüfen',
+              onPressed: _inspectCandidates,
+              icon: const Icon(Icons.list_alt),
+            ),
+            IconButton(
+              tooltip: 'Titel testen',
+              onPressed: _inspectTitle,
+              icon: const Icon(Icons.info_outline),
+            ),
+            IconButton(
+              tooltip: 'Neu laden',
+              onPressed: _runningAction || _loading ? null : _reload,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Warenkorb-Zielmenge prüfen',
+              onPressed: _runningAction || _loading ? null : _runAddToCartJs,
+              icon: const Icon(Icons.play_arrow),
+            ),
+          ],
+        ),
+        body: Stack(
+          children: <Widget>[
+            AbsorbPointer(
+              absorbing: _runningAction,
+              child: WebViewWidget(controller: _controller),
+            ),
+            if (_loading) const LinearProgressIndicator(),
+            if (_lastJsResult != null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Card(
+                  color: Colors.black87,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SelectableText(
+                      'Warenkorb-Prüfung:\n$_lastJsResult',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

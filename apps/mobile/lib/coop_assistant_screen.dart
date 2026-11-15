@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import 'coop_credentials_store.dart';
-import 'coop_saved_product.dart';
+import 'coop_basket_service.dart';
+import 'coop_basket_webview.dart';
 
-enum _AssistantItemStatus {
-  offen,
-  erfolgreich,
-  uebersprungen,
-  fehler,
-}
+enum _Status { pending, verified, manual, skipped, blocked, uncertain }
 
 class CoopAssistantScreen extends StatefulWidget {
-  final List<CoopSavedProduct> products;
+  final List<CoopBasketItem> items;
 
-  const CoopAssistantScreen({
-    super.key,
-    required this.products,
-  });
+  const CoopAssistantScreen({super.key, required this.items});
 
   @override
   State<CoopAssistantScreen> createState() => _CoopAssistantScreenState();
@@ -25,918 +17,283 @@ class CoopAssistantScreen extends StatefulWidget {
 
 class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
   late final WebViewController _controller;
-  final CoopCredentialsStore _credentialsStore = CoopCredentialsStore();
-  late final List<_AssistantItemStatus> _statuses;
-
+  late final CoopBasketWebView _page;
+  late final CoopBasketService _service;
+  late final List<_Status> _statuses;
+  late final List<String?> _messages;
   int _index = 0;
   bool _loading = true;
   bool _running = false;
-  bool _autoAdvance = true;
-  bool _fullAutoRun = false;
-  String? _lastResult;
+  bool _cancelRequested = false;
 
-  CoopSavedProduct get _current => widget.products[_index];
-  _AssistantItemStatus get _currentStatus => _statuses[_index];
+  CoopBasketItem get _current => widget.items[_index];
 
   @override
   void initState() {
     super.initState();
-
-    _statuses = List<_AssistantItemStatus>.filled(
-      widget.products.length,
-      _AssistantItemStatus.offen,
-    );
-
+    _statuses = List<_Status>.filled(widget.items.length, _Status.pending);
+    _messages = List<String?>.filled(widget.items.length, null);
     _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) {
-            if (!mounted) return;
-            setState(() {
-              _loading = true;
-            });
-          },
-          onPageFinished: (_) {
-            if (!mounted) return;
-            setState(() {
-              _loading = false;
-            });
-          },
-        ),
-      );
-
-    _loadCurrent();
-  }
-
-  Future<void> _loadCurrent() async {
-    await _controller.loadRequest(Uri.parse(_current.productUrl));
-  }
-
-  Future<void> _reload() async {
-    await _controller.reload();
-  }
-
-  int get _offenCount =>
-      _statuses.where((s) => s == _AssistantItemStatus.offen).length;
-
-  int get _erfolgreichCount =>
-      _statuses.where((s) => s == _AssistantItemStatus.erfolgreich).length;
-
-  int get _uebersprungenCount =>
-      _statuses.where((s) => s == _AssistantItemStatus.uebersprungen).length;
-
-  int get _fehlerCount =>
-      _statuses.where((s) => s == _AssistantItemStatus.fehler).length;
-
-  bool _isRetryCandidate(_AssistantItemStatus status) {
-    return status == _AssistantItemStatus.offen ||
-        status == _AssistantItemStatus.fehler;
-  }
-
-  void _markCurrent(_AssistantItemStatus status) {
-    setState(() {
-      _statuses[_index] = status;
-    });
-  }
-
-  Future<void> _goToIndex(int index) async {
-    if (index < 0 || index >= widget.products.length) return;
-
-    setState(() {
-      _index = index;
-      _lastResult = null;
-    });
-    await _loadCurrent();
-  }
-
-  void _next() {
-    if (_index >= widget.products.length - 1) return;
-
-    setState(() {
-      _index++;
-      _lastResult = null;
-    });
-    _loadCurrent();
-  }
-
-  void _prev() {
-    if (_index <= 0) return;
-
-    setState(() {
-      _index--;
-      _lastResult = null;
-      _fullAutoRun = false;
-    });
-    _loadCurrent();
-  }
-
-  int? _nextRetryIndexFrom(int startExclusive) {
-    for (int i = startExclusive + 1; i < _statuses.length; i++) {
-      if (_isRetryCandidate(_statuses[i])) {
-        return i;
-      }
-    }
-    return null;
-  }
-
-  int? _previousRetryIndexFrom(int startExclusive) {
-    for (int i = startExclusive - 1; i >= 0; i--) {
-      if (_isRetryCandidate(_statuses[i])) {
-        return i;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _advanceIfPossible() async {
-    final int? nextIndex = _nextRetryIndexFrom(_index);
-
-    if (nextIndex != null) {
-      await _goToIndex(nextIndex);
-      return;
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _fullAutoRun = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Keine weiteren offenen/fehlerhaften Produkte'),
+      ..setJavaScriptMode(JavaScriptMode.unrestricted);
+    _page = CoopBasketWebView(_controller);
+    _service = CoopBasketService(page: _page);
+    _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (_) {
+          _page.onPageStarted();
+          if (mounted) setState(() => _loading = true);
+        },
+        onPageFinished: (_) {
+          _page.onPageFinished();
+          if (mounted) setState(() => _loading = false);
+        },
+        onWebResourceError: (WebResourceError error) {
+          if (error.errorCode == -999) {
+            return; // WKWebView redirect cancellation.
+          }
+          if (error.isForMainFrame == true) {
+            _page.onPageError();
+            if (mounted) setState(() => _loading = false);
+          }
+        },
       ),
     );
+    if (widget.items.isNotEmpty) _openIndex(0);
   }
 
-  Future<void> _jumpToNextProblem() async {
-    final int? nextIndex = _nextRetryIndexFrom(_index);
-    if (nextIndex == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kein nächstes offenes/fehlerhaftes Produkt gefunden'),
-        ),
-      );
-      return;
-    }
-    await _goToIndex(nextIndex);
-  }
-
-  Future<void> _jumpToPreviousProblem() async {
-    final int? prevIndex = _previousRetryIndexFrom(_index);
-    if (prevIndex == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kein vorheriges offenes/fehlerhaftes Produkt gefunden'),
-        ),
-      );
-      return;
-    }
-    await _goToIndex(prevIndex);
-  }
-
-  Future<void> _jumpToFirstProblem() async {
-    for (int i = 0; i < _statuses.length; i++) {
-      if (_isRetryCandidate(_statuses[i])) {
-        await _goToIndex(i);
-        return;
-      }
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Keine offenen/fehlerhaften Produkte vorhanden'),
-      ),
-    );
-  }
-
-  void _resetOnlyProblematic() {
-    setState(() {
-      for (int i = 0; i < _statuses.length; i++) {
-        if (_statuses[i] == _AssistantItemStatus.fehler) {
-          _statuses[i] = _AssistantItemStatus.offen;
-        }
-      }
-    });
-  }
-
-  Future<void> _waitForPageToSettle() async {
-    await Future<void>.delayed(const Duration(milliseconds: 1800));
-  }
-
-  String _jsEscape(String input) {
-    return input
-        .replaceAll(r'\', r'\\')
-        .replaceAll("'", r"\'")
-        .replaceAll('\n', r'\n')
-        .replaceAll('\r', r'\r');
-  }
-
-  Future<String> _inspectLoginState() async {
-    const String script = r'''
-(() => {
-  function normalize(text) {
-    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  }
-
-  const href = normalize(window.location.href);
-  const title = normalize(document.title);
-
-  const hasPasswordInput = !!document.querySelector('input[type="password"]');
-  const emailInput = document.querySelector(
-    'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[id*="user"]'
-  );
-
-  const loginHints =
-    href.includes('login') ||
-    href.includes('anmelden') ||
-    title.includes('login') ||
-    title.includes('anmelden') ||
-    hasPasswordInput;
-
-  return JSON.stringify({
-    href: window.location.href,
-    title: document.title,
-    loginPage: !!loginHints,
-    hasPasswordInput: hasPasswordInput,
-    hasEmailInput: !!emailInput
-  });
-})();
-''';
-
-    final Object result =
-        await _controller.runJavaScriptReturningResult(script);
-    return result.toString();
-  }
-
-  Future<String> _fillCredentialsIfNeeded() async {
-    final CoopCredentials credentials = await _credentialsStore.load();
-
-    if (!credentials.isComplete) {
-      return 'credentials-missing';
-    }
-
-    final String email = _jsEscape(credentials.email);
-    final String password = _jsEscape(credentials.password);
-
-    final String script = '''
-(() => {
-  function findInput(candidates) {
-    for (const selector of candidates) {
-      const el = document.querySelector(selector);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  function setValue(el, value) {
-    if (!el) return false;
-    el.focus();
-    el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
-  }
-
-  const emailInput = findInput([
-    'input[type="email"]',
-    'input[name="email"]',
-    'input[name="username"]',
-    'input[id*="email"]',
-    'input[id*="user"]'
-  ]);
-
-  const passwordInput = findInput([
-    'input[type="password"]',
-    'input[name="password"]',
-    'input[id*="password"]'
-  ]);
-
-  const emailOk = setValue(emailInput, '$email');
-  const passwordOk = setValue(passwordInput, '$password');
-
-  return JSON.stringify({
-    emailFound: !!emailInput,
-    passwordFound: !!passwordInput,
-    emailFilled: emailOk,
-    passwordFilled: passwordOk
-  });
-})();
-''';
-
-    final Object result =
-        await _controller.runJavaScriptReturningResult(script);
-    return result.toString();
-  }
-
-  Future<String> _submitLoginIfPossible() async {
-    const String script = r'''
-(() => {
-  function normalize(text) {
-    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  }
-
-  function visible(el) {
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    if (!style) return true;
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
-
-  const candidates = buttons.filter((el) => {
-    if (!visible(el)) return false;
-    const text = normalize(
-      (el.innerText || '') + ' ' +
-      (el.value || '') + ' ' +
-      (el.getAttribute('aria-label') || '') + ' ' +
-      (el.getAttribute('title') || '')
-    );
-
-    return (
-      text.includes('anmelden') ||
-      text.includes('login') ||
-      text.includes('log in') ||
-      text.includes('sign in')
-    );
-  });
-
-  if (candidates.length === 0) {
-    return 'no-login-button-match';
-  }
-
-  candidates[0].click();
-  return 'clicked-login-button';
-})();
-''';
-
-    final Object result =
-        await _controller.runJavaScriptReturningResult(script);
-    return result.toString();
-  }
-
-  Future<String> _ensureLoggedInIfNeeded() async {
-    final String before = await _inspectLoginState();
-
-    if (!before.toLowerCase().contains('"loginpage":true')) {
-      return 'not-on-login-page';
-    }
-
-    final String fillResult = await _fillCredentialsIfNeeded();
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    final String submitResult = await _submitLoginIfPossible();
-    await Future<void>.delayed(const Duration(milliseconds: 2200));
-
-    final String after = await _inspectLoginState();
-
-    return 'login-before=$before\nlogin-fill=$fillResult\nlogin-submit=$submitResult\nlogin-after=$after';
-  }
-
-  Future<bool> _runAddInternal() async {
-    const String stateScript = r'''
-(() => {
-  function normalize(text) {
-    return (text || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  function visible(el) {
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    if (!style) return true;
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  const plus = document.querySelector('[data-testauto^="productbasketplus"]');
-  const minus = document.querySelector('[data-testauto^="productbasketminus"]');
-  const basket = document.querySelector('[data-testauto="basket"]');
-
-  const basketText = basket
-    ? normalize(
-        (basket.innerText || '') + ' ' +
-        (basket.getAttribute('aria-label') || '') + ' ' +
-        (basket.getAttribute('title') || '')
-      )
-    : '';
-
-  return JSON.stringify({
-    href: window.location.href,
-    hasPlus: !!(plus && visible(plus)),
-    hasMinus: !!(minus && visible(minus)),
-    basketText: basketText
-  });
-})();
-''';
-
-    const String clickScript = r'''
-(() => {
-  function normalize(text) {
-    return (text || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  function visible(el) {
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    if (!style) return true;
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  function attrs(el) {
-    return normalize([
-      el.innerText || '',
-      el.textContent || '',
-      el.value || '',
-      el.getAttribute('aria-label') || '',
-      el.getAttribute('title') || '',
-      el.id || '',
-      el.className || '',
-      el.getAttribute('data-testid') || '',
-      el.getAttribute('data-testauto') || '',
-      el.getAttribute('name') || ''
-    ].join(' '));
-  }
-
-  const currentUrl = normalize(window.location.href);
-  if (currentUrl.includes('/cart') || currentUrl.includes('/basket')) {
-    return 'wrong-page:cart';
-  }
-
-  const plusButton = document.querySelector('[data-testauto^="productbasketplus"]');
-  if (plusButton && visible(plusButton)) {
-    plusButton.click();
-    return 'clicked:productbasketplus';
-  }
-
-  const candidates = Array.from(
-    document.querySelectorAll('button, a, input[type="button"], input[type="submit"]')
-  );
-
-  const strongPositivePhrases = [
-    'in den warenkorb',
-    'zum warenkorb hinzufügen',
-    'zum warenkorb hinzufugen',
-    'add to cart'
-  ];
-
-  const weakPositivePhrases = [
-    'hinzufügen',
-    'hinzufugen',
-    'add'
-  ];
-
-  const negativePhrases = [
-    'warenkorb wert',
-    'öffnet mini-warenkorb',
-    'oeffnet mini-warenkorb',
-    'mini-warenkorb',
-    'mein warenkorb',
-    'zur kasse',
-    'checkout',
-    'basket value',
-    'productbasketminus',
-    'productbasketplus'
-  ];
-
-  let best = null;
-  let bestScore = -9999;
-
-  for (const el of candidates) {
-    if (!visible(el)) continue;
-
-    const text = attrs(el);
-    if (!text) continue;
-
-    let score = 0;
-
-    for (const phrase of strongPositivePhrases) {
-      if (text.includes(phrase)) score += 100;
-    }
-
-    for (const phrase of weakPositivePhrases) {
-      if (text.includes(phrase)) score += 20;
-    }
-
-    for (const phrase of negativePhrases) {
-      if (text.includes(phrase)) score -= 200;
-    }
-
-    if (text === 'warenkorb' || text === 'basket' || text === 'cart') {
-      score -= 500;
-    }
-
-    if (
-      text.includes('addtocart') ||
-      text.includes('add-to-cart') ||
-      text.includes('basket/detail/add')
-    ) {
-      score += 120;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = { el, text, score };
-    }
-  }
-
-  if (!best || bestScore < 50) {
-    return 'no-add-to-cart-match';
-  }
-
-  best.el.click();
-  return `clicked:${best.text}::score=${best.score}`;
-})();
-''';
-
-    final String loginResult = await _ensureLoggedInIfNeeded();
-
-    final Object before =
-        await _controller.runJavaScriptReturningResult(stateScript);
-
-    final Object clickResult =
-        await _controller.runJavaScriptReturningResult(clickScript);
-
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-
-    final Object after =
-        await _controller.runJavaScriptReturningResult(stateScript);
-
-    final String clickText = clickResult.toString();
-    final String result =
-        '$loginResult\nbefore=$before\nclick=$clickText\nafter=$after';
-
+  Future<bool> _openIndex(int index) async {
     if (!mounted) return false;
     setState(() {
-      _lastResult = result;
+      _index = index;
+      _loading = true;
     });
-
-    return clickText.startsWith('clicked:');
-  }
-
-  Future<void> _runAdd() async {
-    if (_running) return;
-
-    setState(() {
-      _running = true;
-    });
-
     try {
-      final bool success = await _runAddInternal();
-
-      if (!mounted) return;
-
-      if (success) {
-        _markCurrent(_AssistantItemStatus.erfolgreich);
-      } else {
-        _markCurrent(_AssistantItemStatus.fehler);
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Produktaktion erfolgreich ausgelöst'
-                : 'Kein passender Add-to-cart-Kandidat gefunden',
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
-      if (success && _autoAdvance) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-        await _advanceIfPossible();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _markCurrent(_AssistantItemStatus.fehler);
-      setState(() {
-        _lastResult = 'error: $e';
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
-    } finally {
+      await _page.open(Uri.parse(_current.product.productUrl));
+      return mounted;
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _running = false;
+          _loading = false;
+          if (_retryable(index)) _statuses[index] = _Status.blocked;
+          _messages[index] =
+              'Coop-Seite konnte nicht geladen werden. Bitte erneut öffnen.';
         });
       }
+      return false;
     }
   }
 
-  Future<void> _runAll() async {
-    if (_running) return;
+  bool _retryable(int index) =>
+      _statuses[index] == _Status.pending ||
+      _statuses[index] == _Status.blocked;
 
+  Future<void> _readQuantity() async {
+    final String? id = coopProductId(_current.product.productUrl);
+    if (id == null) return;
+    String message;
+    try {
+      final CoopBasketSnapshot state = await _page.read(id);
+      message = state.loginRequired
+          ? 'Bitte direkt bei Coop anmelden.'
+          : state.ready && state.productId == id && state.quantity != null
+          ? 'Aktuell angezeigt: ${state.quantity} Packung(en).'
+          : 'Produktmenge derzeit nicht lesbar.';
+    } catch (_) {
+      message = 'Coop-Seite konnte nicht gelesen werden.';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _run({bool all = false}) async {
+    if (_running || _loading) return;
     setState(() {
       _running = true;
-      _fullAutoRun = true;
+      _cancelRequested = false;
     });
-
     try {
-      while (mounted && _fullAutoRun) {
-        if (!_isRetryCandidate(_currentStatus)) {
-          final int? nextIndex = _nextRetryIndexFrom(_index);
-          if (nextIndex == null) {
-            break;
-          }
-          await _goToIndex(nextIndex);
-          await _waitForPageToSettle();
-        }
-
-        await _waitForPageToSettle();
-        final bool success = await _runAddInternal();
-
-        if (!mounted) return;
-
-        if (success) {
-          _markCurrent(_AssistantItemStatus.erfolgreich);
-        } else {
-          _markCurrent(_AssistantItemStatus.fehler);
-        }
-
-        if (!success) {
-          setState(() {
-            _fullAutoRun = false;
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Auto-Run gestoppt: Kein passender Add-to-cart-Kandidat gefunden',
-              ),
-              duration: Duration(seconds: 3),
-            ),
-          );
+      final List<int> indices = all
+          ? List<int>.generate(
+              widget.items.length,
+              (int i) => i,
+            ).where(_retryable).toList()
+          : <int>[_index];
+      for (final int index in indices) {
+        if (!mounted || _cancelRequested) break;
+        final String? currentId = coopProductId(
+          await _controller.currentUrl() ?? '',
+        );
+        if (!mounted || _cancelRequested) break;
+        if ((index != _index ||
+                currentId !=
+                    coopProductId(widget.items[index].product.productUrl)) &&
+            !await _openIndex(index)) {
           break;
         }
-
-        final int? nextIndex = _nextRetryIndexFrom(_index);
-        if (nextIndex == null) {
-          setState(() {
-            _fullAutoRun = false;
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Auto-Run abgeschlossen'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          break;
-        }
-
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-        await _goToIndex(nextIndex);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _markCurrent(_AssistantItemStatus.fehler);
-      setState(() {
-        _lastResult = 'error: $e';
-        _fullAutoRun = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Auto-Run Fehler: $e')),
-      );
-    } finally {
-      if (mounted) {
+        if (!mounted || _cancelRequested) break;
+        final CoopBasketItem item = widget.items[index];
+        final CoopBasketResult result = await _service.ensureQuantity(
+          productUrl: item.product.productUrl,
+          targetQuantity: item.targetQuantity,
+          isCancelled: () => !mounted || _cancelRequested,
+        );
+        if (!mounted) break;
         setState(() {
-          _running = false;
+          _messages[index] = result.message;
+          _statuses[index] = switch (result.outcome) {
+            CoopBasketOutcome.verified => _Status.verified,
+            CoopBasketOutcome.blocked => _Status.blocked,
+            CoopBasketOutcome.uncertain ||
+            CoopBasketOutcome.cancelled => _Status.uncertain,
+          };
         });
+        if (!result.verified) break;
       }
+    } finally {
+      if (mounted) setState(() => _running = false);
     }
   }
 
-  void _stopAutoRun() {
-    setState(() {
-      _fullAutoRun = false;
-    });
-  }
-
-  Future<void> _skipCurrent() async {
-    _markCurrent(_AssistantItemStatus.uebersprungen);
-    await _advanceIfPossible();
-  }
-
-  Color _statusColor(_AssistantItemStatus status) {
-    switch (status) {
-      case _AssistantItemStatus.offen:
-        return Colors.grey.shade300;
-      case _AssistantItemStatus.erfolgreich:
-        return Colors.green.shade200;
-      case _AssistantItemStatus.uebersprungen:
-        return Colors.orange.shade200;
-      case _AssistantItemStatus.fehler:
-        return Colors.red.shade200;
-    }
-  }
-
-  String _statusLabel(_AssistantItemStatus status) {
-    switch (status) {
-      case _AssistantItemStatus.offen:
-        return 'Offen';
-      case _AssistantItemStatus.erfolgreich:
-        return 'Erfolgreich';
-      case _AssistantItemStatus.uebersprungen:
-        return 'Übersprungen';
-      case _AssistantItemStatus.fehler:
-        return 'Fehler';
-    }
-  }
+  String _label(_Status status) => switch (status) {
+    _Status.pending => 'Offen',
+    _Status.verified => 'Menge bestätigt',
+    _Status.manual => 'Manuell geprüft',
+    _Status.skipped => 'Übersprungen',
+    _Status.blocked => 'Aktion nötig',
+    _Status.uncertain => 'Warenkorb prüfen',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final bool hasPrev = _index > 0;
-    final bool hasNext = _index < widget.products.length - 1;
-    final bool hasAnyRetryCandidates =
-        _statuses.any((status) => _isRetryCandidate(status));
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Coop-Assistent ${_index + 1}/${widget.products.length}'),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Neu laden',
-            onPressed: _running ? null : _reload,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          Card(
-            margin: const EdgeInsets.all(12),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
+    if (widget.items.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Coop-Assistent')),
+        body: const Center(child: Text('Keine Produkte ausgewählt.')),
+      );
+    }
+    final int verified = _statuses.where((s) => s == _Status.verified).length;
+    return PopScope(
+      canPop: !_running,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Coop-Assistent ${_index + 1}/${widget.items.length}'),
+          actions: <Widget>[
+            IconButton(
+              tooltip: 'Menge nur lesen',
+              onPressed: _running || _loading ? null : _readQuantity,
+              icon: const Icon(Icons.visibility_outlined),
+            ),
+            IconButton(
+              tooltip: 'Produkt neu öffnen',
+              onPressed: _running || _loading ? null : () => _openIndex(_index),
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    _current.productLabel,
+                    _current.product.productLabel,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      Chip(
-                        label: Text(_current.canonicalKey),
-                      ),
-                      Chip(
-                        backgroundColor: _statusColor(_currentStatus),
-                        label: Text(_statusLabel(_currentStatus)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   Text(
-                    _current.productUrl,
-                    style: const TextStyle(fontSize: 12),
+                    'Ziel im Warenkorb: ${_current.targetQuantity} Packung(en) insgesamt',
                   ),
-                  const SizedBox(height: 10),
                   Text(
-                    'Zusammenfassung: '
-                    '$_erfolgreichCount erfolgreich, '
-                    '$_uebersprungenCount übersprungen, '
-                    '$_fehlerCount Fehler, '
-                    '$_offenCount offen',
-                    style: const TextStyle(fontSize: 12),
+                    '${_label(_statuses[_index])} · $verified/${widget.items.length} automatisch bestätigt',
                   ),
-                  const SizedBox(height: 10),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Automatisch zum nächsten Produkt'),
-                    value: _autoAdvance,
-                    onChanged: _running
-                        ? null
-                        : (bool value) {
-                            setState(() {
-                              _autoAdvance = value;
-                            });
-                          },
+                  if (_messages[_index] != null) Text(_messages[_index]!),
+                  const Text(
+                    'Bei einer Anmeldung bitte direkt auf der Coop-Seite fortfahren. '
+                    'Unklare Ergebnisse werden nicht automatisch wiederholt.',
                   ),
                 ],
               ),
             ),
-          ),
-          if (_loading) const LinearProgressIndicator(),
-          Expanded(
-            child: WebViewWidget(controller: _controller),
-          ),
-          if (_lastResult != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Card(
-                color: Colors.black87,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SelectableText(
-                    _lastResult!,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
+            if (_loading || _running) const LinearProgressIndicator(),
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: _running,
+                child: WebViewWidget(controller: _controller),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed: (_running || !hasPrev) ? null : _prev,
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Zurück'),
-                ),
-                FilledButton.icon(
-                  onPressed: _running ? null : _runAdd,
-                  icon: const Icon(Icons.add_shopping_cart),
-                  label: Text(_running ? 'Läuft...' : 'Automatisch hinzufügen'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: (_running || !hasNext) ? null : _next,
-                  icon: const Icon(Icons.arrow_forward),
-                  label: const Text('Weiter'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running ? null : _skipCurrent,
-                  icon: const Icon(Icons.skip_next),
-                  label: const Text('Überspringen'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running
-                      ? null
-                      : () => _markCurrent(_AssistantItemStatus.erfolgreich),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Als erfolgreich markieren'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running || !hasAnyRetryCandidates
-                      ? null
-                      : _jumpToFirstProblem,
-                  icon: const Icon(Icons.first_page),
-                  label: const Text('Zum ersten Problem'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running ? null : _jumpToPreviousProblem,
-                  icon: const Icon(Icons.keyboard_double_arrow_left),
-                  label: const Text('Vorheriges Problem'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running ? null : _jumpToNextProblem,
-                  icon: const Icon(Icons.keyboard_double_arrow_right),
-                  label: const Text('Nächstes Problem'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _running || _fehlerCount == 0
-                      ? null
-                      : _resetOnlyProblematic,
-                  icon: const Icon(Icons.restart_alt),
-                  label: const Text('Fehler zurücksetzen'),
-                ),
-                if (!_fullAutoRun)
-                  ElevatedButton.icon(
-                    onPressed: _running || !hasAnyRetryCandidates
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  OutlinedButton(
+                    onPressed: _running || _loading || _index == 0
                         ? null
-                        : _runAll,
-                    icon: const Icon(Icons.play_circle_outline),
-                    label: const Text('Retry Auto-Run'),
+                        : () => _openIndex(_index - 1),
+                    child: const Text('Zurück'),
                   ),
-                if (_fullAutoRun)
-                  ElevatedButton.icon(
-                    onPressed: _stopAutoRun,
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: const Text('Auto-Run stoppen'),
+                  FilledButton(
+                    onPressed: _running || _loading ? null : () => _run(),
+                    child: const Text('Zielmenge prüfen / ergänzen'),
                   ),
-              ],
+                  FilledButton.tonal(
+                    onPressed:
+                        _running ||
+                            _loading ||
+                            !List<int>.generate(
+                              widget.items.length,
+                              (i) => i,
+                            ).any(_retryable)
+                        ? null
+                        : () => _run(all: true),
+                    child: const Text('Offene Produkte bearbeiten'),
+                  ),
+                  if (_running)
+                    OutlinedButton(
+                      onPressed: () => setState(() => _cancelRequested = true),
+                      child: const Text('Stoppen'),
+                    ),
+                  OutlinedButton(
+                    onPressed:
+                        _running ||
+                            _loading ||
+                            _index == widget.items.length - 1
+                        ? null
+                        : () => _openIndex(_index + 1),
+                    child: const Text('Weiter'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () => setState(() {
+                            _statuses[_index] = _Status.manual;
+                            _messages[_index] =
+                                'Menge vom Nutzer im Warenkorb geprüft.';
+                          }),
+                    child: const Text('Im Warenkorb selbst geprüft'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () => setState(() {
+                            _statuses[_index] = _Status.skipped;
+                            _messages[_index] =
+                                'Für diesen Durchlauf übersprungen.';
+                          }),
+                    child: const Text('Überspringen'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

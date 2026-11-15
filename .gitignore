@@ -27,3 +27,7 @@ __pycache__/
 # Flutter
 .build/
 .dart_tool/
+
+# Local environments and credentials
+.venv/
+.env
