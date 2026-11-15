@@ -542,7 +542,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('ei')) {
+    if (RegExp(r'\b(?:ei|eier)\b').hasMatch(name)) {
       final String displayName = quantity == 1 ? 'Ei' : 'Eier';
       return IngredientInterpretation(
         name: displayName,
@@ -753,8 +753,15 @@ class IngredientParser {
   static String _mapUnit(String rawUnit) {
     final String u = rawUnit.toLowerCase().trim();
 
-    if (u.contains('gram')) return 'g';
+    const shortUnits = <String, String>{
+      'g': 'g', 'kg': 'kg', 'ml': 'ml', 'l': 'l', 'tl': 'TL', 'el': 'EL',
+      'stk.': 'Stk.', 'stk': 'Stk.', 'stück': 'Stk.', 'bund': 'Bund',
+      'dose': 'Dose', 'dosen': 'Dose', 'pck.': 'Pck.', 'prise': 'Prise',
+      'zehe': 'Zehe',
+    };
+    if (shortUnits.containsKey(u)) return shortUnits[u]!;
     if (u.contains('kilogram')) return 'kg';
+    if (u.contains('gram')) return 'g';
     if (u.contains('milliliter')) return 'ml';
     if (u.contains('liter')) return 'l';
     if (u.contains('piece')) return 'Stk.';

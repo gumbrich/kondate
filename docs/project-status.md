@@ -42,6 +42,12 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 
 ## Current branch
 
+Current follow-up: `codex/ingredient-coop-selection`, based on photo commit `d7c1700`. Adds local German/Swiss German/English cooking-word suggestions, live native Coop product selection for arbitrary ingredients, manual shopping items in shop preparation, mandatory resolution of selected missing products, and preservation of custom saved mappings. Fixes rice being classified as eggs and short units/kilograms being lost. Unknown ingredient amounts are labelled explicitly; pack totals remain user-selected.
+
+Verification so far: 51 Flutter tests and clean analysis; Mac release and Android debug builds; 12 existing Coop selector checks. Native Mac search for a manually entered ingredient and exact-product confirmation were observed. A new ingredient-to-persisted-basket test is pending the user's product/pack choice. Android device acceptance and phone Coop-app synchronization remain unverified. Recipe-name recognition does not produce a complete recipe automatically; the shop preview now lists planned meals without ingredients.
+
+Previous photo branch:
+
 `codex/photo-week-plan`, [draft PR #35](https://github.com/gumbrich/kondate/pull/35), based on `codex/coop-basket-verification` at `ba71d78` to preserve the completed Coop work. This is separate from the LangGraph experiment. The underlying Coop changes are in [draft PR #34](https://github.com/gumbrich/kondate/pull/34).
 
 Photo import adds camera/gallery selection, offline native text recognition, explicit review and day selection, and safe plan merging. All 42 app tests, analysis, and 12 existing Coop selector checks passed. [GitHub CI](https://github.com/gumbrich/kondate/actions/runs/43719135601) passed for implementation commit `4651c80`. No photo upload, backend changes or API keys. Mac debug/release and Android debug builds passed; the Mac native integration test read a generated seven-day example. The supplied handwritten photo required corrections. See the [photo guide](photo-week-plan.md) for exact scope and remaining device checks.

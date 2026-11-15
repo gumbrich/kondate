@@ -47,6 +47,9 @@ The device integration test generates a synthetic seven-day image in memory and 
 
 ## Implementation
 
+- Photo review offers nearby cooking-word spellings in German, Swiss German and English using a local vocabulary extended by saved recipe titles. Suggestions require a tap; they never select a day or save automatically. This is a small vocabulary, not comprehensive language correction.
+- After importing meal names, link recipes in the planner or add ingredients manually in the shopping list. Shop preview warns about days without recipe ingredients. In **Warenkorb vorbereiten**, choose a Coop product per selected ingredient, compare variants on Coop, then confirm total packs. Unmapped ingredients block the assistant until chosen or explicitly deselected; actual writes use the existing reload-verifying basket service.
+
 - `image_picker`: gallery/file selection and Android camera; Android lost-image recovery returns to review after activity recreation.
 - Mac: AVFoundation camera sheet, camera permission explanation, sandbox camera and selected-file read entitlements; Vision recognition on a background queue.
 - Android: native ML Kit `com.google.mlkit:text-recognition:16.0.1`, with the Latin model bundled at build time.

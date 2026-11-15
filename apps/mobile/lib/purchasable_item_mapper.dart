@@ -9,6 +9,7 @@ class PurchasableItemMapper {
     required String unit,
     required String name,
     Map<String, CoopUserPreferenceOverride>? userOverrides,
+    String? amountDescription,
   }) {
     final IngredientInterpretation parsed =
         IngredientParser.parse(name, quantity, unit);
@@ -59,6 +60,7 @@ class PurchasableItemMapper {
         unit: effectiveUnit,
       ),
       note: parsed.note,
+      amountDescription: amountDescription,
     );
   }
 

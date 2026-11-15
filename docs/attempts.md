@@ -4,6 +4,16 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 
 ## 2026-11-15 photo-to-week-plan
 
+### Ingredient selection and spelling follow-up
+
+- The shop preview omitted manual shopping entries, and the basket preparation silently continued with only mapped products. New preparation includes outstanding manual entries and blocks on unresolved selected ingredients; users must choose an actual product or explicitly deselect the ingredient.
+- Saved-product editing previously iterated only predefined keys and could erase custom choices. It now includes all saved keys. Tests cover custom mapping retention, cancelled choices, explicit deselection and deduplication by SKU.
+- The ingredient parser matched `ei` inside `Reis`; its unit mapper also failed on short units and matched `kilogram` as grams. Added regression tests and fixed those cases. Other pre-existing recipe import/amount issues remain tracked separately; unknown amounts must not imply one pack.
+- Local spelling suggestions use a small curated culinary vocabulary plus saved recipe titles, nearest-word distance and explicit acceptance. This is not a general multilingual spellchecker or improved handwriting model. Raw text remains editable; photos are never uploaded.
+- Native Mac: manual ingredient reached preparation; live Coop search displayed multiple products; opening a detail page produced a correctly named product-confirmation dialog. New basket mutation remains pending a concrete user choice.
+- Additional widget tests initially failed because scrolling disposed the first field and put another target off-screen in the small test viewport. Larger explicit test viewports made the intended interactions deterministic; all 51 tests then passed.
+
+
 - No camera, photo import, or OCR existed in the app. The existing meal-idea/day model is sufficient; imported text does not need new recipe or household schemas.
 - Apple Vision on the supplied handwritten whiteboard missed several weekday/meal lines and misread words. Its high confidence values did not establish correctness. All OCR-derived entries therefore remain unchecked and marked for review.
 - Local grayscale/contrast, red-channel and perspective-correction experiments changed the recognized text but did not consistently improve accuracy. Do not automatically enable these transforms based on this one image.
