@@ -35,6 +35,6 @@ Date: 2026-11-15. Device: Mac (macOS 15.6). Tracking: [#32](https://github.com/g
 
 The assistant displayed 3/3 verified quantities. This is not a fully unattended three-product success: the porridge correction and login/address steps were manual. The final promotion guard now blocks non-unit or conflicting increments. The pack-target dialog, missing-link warning, temporary extra-product flow, actual basket and repeat-target behavior were exercised. No saved recipe/preference edits and no checkout/order submission.
 
-Final code checks: 27 Flutter tests and 12 selector fixture assertions passed; analysis clean; Mac release build passed. Navigation race protections added after the live test have automated coverage; a final native retest, slow-network hydration test, live cancellation and Android follow-up remain open.
+Final code checks: 27 Flutter tests and 12 selector fixture assertions passed; analysis clean; Mac release build passed. The final navigation guard passed a fresh-screen native Mac retest: all three products remained at one, with 3/3 verified. CI passed for implementation commit `f4bb162`. Slow-network hydration, live cancellation and Android follow-up remain open.
 
 Record only SKU/count evidence; never commit account identifiers, cookies, delivery details, or credentials.

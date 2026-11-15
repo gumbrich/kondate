@@ -21,7 +21,7 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 | Recipe search | Implemented but unverified with a live SerpAPI key in this session | Test the deployed backend separately |
 | Household sync | Local API tests passed in the LangGraph branch | Two-device conflict and recovery test |
 | Coop login | Verified sign-in and reload persistence in native Mac WebView on 2026-11-15 | User completed address confirmation; session survived reloads |
-| Coop basket | Main uses click-only success. This branch verified three exact SKU quantities after reload; promotional additions stop for manual handling | Remaining checks in [#32](https://github.com/gumbrich/kondate/issues/32): slow loading, live cancellation and final adapter changes |
+| Coop basket | Main uses click-only success. This branch verified three exact SKU quantities after reload; promotional additions stop for manual handling | Remaining checks in [#32](https://github.com/gumbrich/kondate/issues/32): slow loading and live cancellation |
 | Ingredient amounts to pack counts | Not implemented automatically | User explicitly chooses total packs per SKU |
 | Coop checkout / order submission | Not implemented as a complete automated flow | Keep manual |
 | Android | Not tested in this session | Regression check after Mac acceptance |
@@ -49,10 +49,10 @@ Implemented explicit total-pack targets, exact-SKU quantity checks, reload verif
 
 - Flutter 3.41.5: analysis clean; 27 app tests passed (16 service, 3 navigation adapter, 8 existing).
 - 12 production-JavaScript selector fixture checks passed, including narrow-layout containers and conflicting promotion signals.
-- Mac release build passed with outbound network permission. CI is pinned to the same Flutter version; the latest pushed CI result is recorded in the PR.
+- Mac release build passed with outbound network permission. CI is pinned to the same Flutter version; CI passed for implementation commit `f4bb162`.
 - Native Mac: login and address confirmed by user; three final SKU counts were 1, 1, 1 after reload and in the basket. Yoghurt repeated without duplication; milk also stayed at 1 during the later three-product run.
 - Porridge initially added 2 through Coop's promotion. The assistant stopped as uncertain. User requested reduction to 1; this was done through Coop, then automatically verified after reload. The final guard blocks visible multi-pack additions before clicking.
-- Claude reviewed the six implementation files and service tests. Navigation timing, promotion signals, cancellation/back navigation, and fake-test assertions were tightened. The final navigation guard is covered by automated adapter tests and a release build; its live Mac retest remains pending.
+- Claude reviewed the six implementation files and service tests. Navigation timing, promotion signals, cancellation/back navigation, and fake-test assertions were tightened. The final navigation guard also passed a fresh-screen native Mac retest: all three targets remained at 1, with 3/3 verified.
 - Final navigation verification proves a replacement document, but does not establish a server transaction receipt. Slow asynchronous cart hydration remains a follow-up risk; see the review record.
 - Android and live cancellation remain untested. Checkout remains manual; no order submitted.
 
