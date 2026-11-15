@@ -9,22 +9,27 @@ class PurchasableItemMapper {
     required String unit,
     required String name,
     Map<String, CoopUserPreferenceOverride>? userOverrides,
+    String? amountDescription,
   }) {
-    final IngredientInterpretation parsed =
-        IngredientParser.parse(name, quantity, unit);
+    final IngredientInterpretation parsed = IngredientParser.parse(
+      name,
+      quantity,
+      unit,
+    );
 
     final String normalizedName = parsed.name;
     final String lower = normalizedName.toLowerCase();
-    final String effectiveUnit =
-        (parsed.unit == null || parsed.unit!.isEmpty)
-            ? _inferFallbackUnit(lower)
-            : parsed.unit!;
+    final String effectiveUnit = (parsed.unit == null || parsed.unit!.isEmpty)
+        ? _inferFallbackUnit(lower)
+        : parsed.unit!;
 
-    final String canonicalKey =
-        IngredientFormatter.canonicalMergeName(normalizedName);
+    final String canonicalKey = IngredientFormatter.canonicalMergeName(
+      normalizedName,
+    );
 
-    final CoopUserPreferenceOverride? userOverride =
-        userOverrides == null ? null : userOverrides[canonicalKey];
+    final CoopUserPreferenceOverride? userOverride = userOverrides == null
+        ? null
+        : userOverrides[canonicalKey];
 
     final CoopProductPreference? defaultPreference =
         CoopProductPreferences.findByCanonicalKey(canonicalKey);
@@ -46,10 +51,10 @@ class PurchasableItemMapper {
       ),
       coopPreferredSearchQuery:
           userOverride?.preferredSearchQuery ??
-              defaultPreference?.preferredSearchQuery,
+          defaultPreference?.preferredSearchQuery,
       coopPreferredProductLabel:
           userOverride?.preferredProductLabel ??
-              defaultPreference?.preferredProductLabel,
+          defaultPreference?.preferredProductLabel,
       quantity: parsed.displayQuantity,
       unit: effectiveUnit,
       preferredPackage: _preferredPackage(lower, effectiveUnit),
@@ -59,6 +64,7 @@ class PurchasableItemMapper {
         unit: effectiveUnit,
       ),
       note: parsed.note,
+      amountDescription: amountDescription,
     );
   }
 
@@ -90,10 +96,7 @@ class PurchasableItemMapper {
       return PurchasableCategory.fleisch;
     }
 
-    if (_containsAny(lower, const <String>[
-      'lachs',
-      'thunfisch',
-    ])) {
+    if (_containsAny(lower, const <String>['lachs', 'thunfisch'])) {
       return PurchasableCategory.fisch;
     }
 
@@ -205,15 +208,15 @@ class PurchasableItemMapper {
       return '$lower 500g';
     }
 
-    if (lower.contains('sahne')) {
+    if (lower == 'sahne') {
       return '$lower 200ml';
     }
 
-    if (lower.contains('milch')) {
+    if (lower == 'milch') {
       return '$lower 1l';
     }
 
-    if (lower.contains('joghurt')) {
+    if (lower == 'joghurt') {
       return '$lower 500g';
     }
 
@@ -242,27 +245,27 @@ class PurchasableItemMapper {
       return 'passierte tomaten 500g';
     }
 
-    if (lower.contains('hackfleisch')) {
+    if (lower == 'gemischtes hackfleisch') {
       return 'hackfleisch gemischt 500g';
     }
 
-    if (lower.contains('milch')) {
+    if (lower == 'milch') {
       return 'milch 1l';
     }
 
-    if (lower.contains('sahne')) {
+    if (lower == 'sahne') {
       return 'rahm 200ml';
     }
 
-    if (lower.contains('joghurt')) {
+    if (lower == 'joghurt') {
       return 'nature joghurt 500g';
     }
 
-    if (lower.contains('parmesan')) {
+    if (lower == 'parmesan') {
       return 'parmesan gerieben';
     }
 
-    if (lower.contains('mozzarella')) {
+    if (lower == 'mozzarella') {
       return 'mozzarella';
     }
 
@@ -270,8 +273,8 @@ class PurchasableItemMapper {
       return 'sojasauce';
     }
 
-    if (lower.contains('festkochende kartoffeln') ||
-        lower.contains('kartoffel')) {
+    if (lower == 'festkochende kartoffeln' ||
+        lower == 'festkochende kartoffel') {
       return 'kartoffeln festkochend';
     }
 
@@ -287,11 +290,11 @@ class PurchasableItemMapper {
   }
 
   static String? _preferredPackage(String lower, String unit) {
-    if (lower.contains('tomaten')) return 'Dose 400 g';
+    if (IngredientFormatter.isCannedTomatoProduct(lower)) return 'Dose 400 g';
     if (lower.contains('hackfleisch')) return 'Packung 500 g';
-    if (lower.contains('sahne')) return 'Becher 200 ml';
-    if (lower.contains('milch')) return '1 l';
-    if (lower.contains('joghurt')) return 'Becher 500 g';
+    if (lower == 'sahne') return 'Becher 200 ml';
+    if (lower == 'milch') return '1 l';
+    if (lower == 'joghurt') return 'Becher 500 g';
     if (unit == 'Bund') return 'Bund';
     return null;
   }
@@ -301,7 +304,7 @@ class PurchasableItemMapper {
     required double quantity,
     required String unit,
   }) {
-    if (lower.contains('tomaten')) {
+    if (IngredientFormatter.isCannedTomatoProduct(lower)) {
       return 'Bevorzuge Standard-Dosen statt Einzelgewichten.';
     }
 
@@ -309,15 +312,15 @@ class PurchasableItemMapper {
       return 'Bevorzuge 500-g-Packungen und runde eher nach oben.';
     }
 
-    if (lower.contains('milch')) {
+    if (lower == 'milch') {
       return 'Bevorzuge 1-Liter-Packungen.';
     }
 
-    if (lower.contains('sahne')) {
+    if (lower == 'sahne') {
       return 'Bevorzuge 200-ml-Becher.';
     }
 
-    if (lower.contains('joghurt')) {
+    if (lower == 'joghurt') {
       return 'Bevorzuge Naturjoghurt in Bechern statt Spezialsorten.';
     }
 
@@ -329,12 +332,11 @@ class PurchasableItemMapper {
   }
 
   static String _inferFallbackUnit(String lower) {
-    if (lower.contains('milch') || lower.contains('sahne')) return 'ml';
+    if (lower == 'milch' || lower == 'sahne') return 'ml';
 
-    if (lower.contains('joghurt') ||
+    if (lower == 'joghurt' ||
         lower.contains('quark') ||
         lower.contains('hackfleisch') ||
-        lower.contains('tomaten') ||
         lower.contains('mehl') ||
         lower.contains('reis') ||
         lower.contains('spaghetti') ||

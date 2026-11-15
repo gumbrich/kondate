@@ -27,3 +27,19 @@ Claude Code reported model `claude-fable-5-1`. The user separately approved a co
 - **P2, OCR rectangles near image edges:** rejecting any coordinate outside 0–1 could discard otherwise useful recognition. The shared native-result parser now clips finite rectangles to the image bounds. A regression test preserves a weekday/meal with small edge overshoots; invalid nonfinite geometry is still rejected.
 
 Claude reported no other actionable findings in that focused review. After the fixes, all 42 app tests, analysis, the native Mac seven-day test, Mac release build, and Android debug build passed. This is not a second Claude approval of the corrected commit. The photo remains on-device, and difficult handwriting still needs manual correction.
+
+## Ingredient selection and spelling review, 2026-11-15
+
+User explicitly approved a separate code-only bundle of ten source files and three test files. Claude Code (`claude-fable-5-1`) returned a real read-only report with tools disabled. No photos, recognized household text, saved plans, credentials or account data were sent. Four high, seven medium and three low findings were reported; findings were checked against the actual code rather than accepted automatically.
+
+- **Identity substitutions (high):** removed the broad red/yellow → paprika rewrites and restricted milk/butter/flour/mince/potato/onion/dairy matching. Distinct products such as red lentils, coconut milk, peanut butter, beef mince and Swiss-spelled sweet potatoes retain their names and search terms.
+- **Explicit units discarded (high):** all preferred-unit helpers now preserve any supplied unit, including an unfamiliar explicit unit. Counted fresh tomatoes/potatoes no longer gain a gram fallback. Pack counts remain explicit user choices.
+- **ASCII corruption (medium):** replaced global ae/oe/ue substitutions with known food-word transliterations only; Sauerkraut and Bauernbrot remain intact.
+- **Tomato quantity/packaging (medium/low):** an explicit gram amount cannot become that many cans based on an embedded package-size note. Fresh tomatoes no longer receive canned-tomato formatting or package hints. Search hints preserve sour cream and sweet-potato variants.
+- **Canonical aliases (medium):** unified carrot/Möhre, tomato, potato and mushroom singular/plural keys. Saved stored values are not deleted; older alias-key mappings can require reselection under the unified key.
+- **Manual-item stripping (medium), not reproduced as reported:** `QuantityParserDe` requires a recognized unit; it returns null for `2 Rote Zwiebeln`, so the stripping branch does not run. Unsupported count-only inputs remain explicitly unknown amounts. No speculative parser change made.
+- **Extra-product null assertion (medium), not reproduced as reported:** the raw link validator already requires an absolute HTTPS Coop URL; scheme-less input cannot reach reconstruction. No unsafe URL accepted.
+- **Invalid saved URL display (medium):** preparation now marks an invalid saved link, matching the existing block before starting the assistant.
+- **Suggestion work and extra-item text (low):** cached base spelling vocabulary; extra products now display an explicit requirement label.
+
+After fixes: the full 52-test Flutter suite passed and analysis was clean; two additional regressions (count-only names and invalid saved links) then passed in the focused 11-test run. Mac release and Android debug builds and 12 Coop selector checks passed. The regression matrix covers identity preservation, explicit/unknown units, transliteration, fresh produce and search variants. Final fixes have not received a second Claude review. The live feta test's manual-add requirement is recorded separately; the review did not establish live retailer reliability.

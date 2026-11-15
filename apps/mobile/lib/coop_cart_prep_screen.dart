@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'coop_assistant_screen.dart';
+import 'coop_product_selection_screen.dart';
 import 'coop_basket_service.dart';
 import 'coop_saved_product.dart';
 import 'coop_saved_products_store.dart';
@@ -11,7 +11,17 @@ import 'purchasable_item.dart';
 class CoopCartPrepScreen extends StatefulWidget {
   final List<PurchasableItem> items;
 
-  const CoopCartPrepScreen({super.key, required this.items});
+  final CoopSavedProductsStore? productStore;
+  final Future<CoopSavedProduct?> Function(PurchasableItem)? chooseProduct;
+  final Widget Function(List<CoopBasketItem>)? assistantBuilder;
+
+  const CoopCartPrepScreen({
+    super.key,
+    required this.items,
+    this.productStore,
+    this.chooseProduct,
+    this.assistantBuilder,
+  });
 
   @override
   State<CoopCartPrepScreen> createState() => _CoopCartPrepScreenState();
@@ -19,6 +29,78 @@ class CoopCartPrepScreen extends StatefulWidget {
 
 class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
   late final Map<int, bool> _selected;
+  late final _store = widget.productStore ?? CoopSavedProductsStore();
+  Map<String, CoopSavedProduct> _saved = {};
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _load() async {
+    try {
+      final saved = await _store.loadSavedProducts();
+      if (mounted) {
+        setState(() {
+          _saved = saved;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Gespeicherte Produkte konnten nicht geladen werden.';
+        });
+      }
+    }
+  }
+
+  String _key(PurchasableItem item) =>
+      IngredientFormatter.canonicalMergeName(item.displayName);
+
+  Future<void> _chooseProduct(PurchasableItem item) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final navigator = Navigator.of(context);
+      final product = widget.chooseProduct != null
+          ? await widget.chooseProduct!(item)
+          : await navigator.push<CoopSavedProduct>(
+              MaterialPageRoute(
+                builder: (_) => CoopProductSelectionScreen(
+                  ingredient: item.displayName,
+                  canonicalKey: _key(item),
+                  query: _searchQuery(item),
+                ),
+              ),
+            );
+      if (product == null || !mounted) return;
+      if (coopProductId(product.productUrl) == null ||
+          product.canonicalKey != _key(item)) {
+        throw const FormatException('Ungültige Produktzuordnung.');
+      }
+      await _store.saveProduct(product);
+      if (mounted) {
+        setState(() {
+          _saved[_key(item)] = product;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error =
+              'Produktauswahl konnte nicht gespeichert werden. Bitte erneut versuchen.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -26,6 +108,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
     _selected = <int, bool>{
       for (int i = 0; i < widget.items.length; i++) i: true,
     };
+    _load();
   }
 
   List<PurchasableItem> get _selectedItems {
@@ -39,6 +122,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
   }
 
   String _quantityText(PurchasableItem item) {
+    if (item.amountDescription != null) return item.amountDescription!;
     final String q = item.quantity == item.quantity.roundToDouble()
         ? item.quantity.toInt().toString()
         : item.quantity.toStringAsFixed(2).replaceAll('.', ',');
@@ -53,24 +137,12 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
         : item.coopSearchQuery;
   }
 
-  Future<void> _openCoopSearch(String query) async {
-    final Uri uri = Uri.https('www.coop.ch', '/de/search/', <String, String>{
-      'text': query,
-    });
-
-    final bool ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-    if (!ok) {
-      throw Exception('Konnte URL nicht öffnen: $uri');
-    }
-  }
-
   Future<void> _openAssistant() async {
-    final CoopSavedProductsStore store = CoopSavedProductsStore();
-    final Map<String, CoopSavedProduct> saved = await store.loadSavedProducts();
+    final saved = _saved;
+    final missingNames = <String>[];
+    final requirements = <String, List<String>>{};
 
     final Map<String, CoopSavedProduct> products = <String, CoopSavedProduct>{};
-    int missing = 0;
     int merged = 0;
     for (final PurchasableItem item in _selectedItems) {
       final String key = IngredientFormatter.canonicalMergeName(
@@ -83,11 +155,32 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
       if (product != null && id != null) {
         if (products.containsKey(id)) merged++;
         products[id] = product;
+        (requirements[id] ??= []).add(
+          '${item.displayName}: ${_quantityText(item)}',
+        );
       } else {
-        missing++;
+        missingNames.add(item.displayName);
       }
     }
     if (!mounted) return;
+    if (missingNames.isNotEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Für jede Zutat ein Produkt wählen'),
+          content: Text(
+            'Noch offen: ${missingNames.join(', ')}.\n\nBitte unten ein Coop-Produkt auswählen oder die Zutat bewusst abwählen. Es wird nichts ausgelassen oder hinzugefügt.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Produkte auswählen'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -120,11 +213,6 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                     Text(
                       '$merged Zuordnungen zum gleichen Coop-Produkt wurden zusammengefasst. Bitte die Gesamtmenge dafür wählen.',
                     ),
-                  if (missing > 0)
-                    Text(
-                      '$missing ausgewählte Artikel ohne gültigen '
-                      'Produktlink werden ausgelassen.',
-                    ),
                   for (final MapEntry<String, CoopSavedProduct> entry
                       in products.entries)
                     Column(
@@ -132,6 +220,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                       children: <Widget>[
                         const SizedBox(height: 12),
                         Text(entry.value.productLabel),
+                        Text((requirements[entry.key] ?? []).join('\n')),
                         Row(
                           children: <Widget>[
                             IconButton(
@@ -167,6 +256,10 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                       update(() {
                         products[id] = product;
                         targets.putIfAbsent(id, () => 1);
+                        requirements.putIfAbsent(
+                          id,
+                          () => ['Zusätzlich gewählt'],
+                        );
                       });
                     },
                     icon: const Icon(Icons.add_link),
@@ -192,17 +285,18 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
       ),
     );
     if (!mounted || confirmed != true) return;
+    final basketItems = <CoopBasketItem>[
+      for (final entry in products.entries)
+        CoopBasketItem(
+          product: entry.value,
+          targetQuantity: targets[entry.key]!,
+        ),
+    ];
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => CoopAssistantScreen(
-          items: <CoopBasketItem>[
-            for (final entry in products.entries)
-              CoopBasketItem(
-                product: entry.value,
-                targetQuantity: targets[entry.key]!,
-              ),
-          ],
-        ),
+        builder: (_) =>
+            widget.assistantBuilder?.call(basketItems) ??
+            CoopAssistantScreen(items: basketItems),
       ),
     );
   }
@@ -282,11 +376,19 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
   Widget build(BuildContext context) {
     final List<PurchasableItem> selectedItems = _selectedItems;
 
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Coop-Warenkorb vorbereiten')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -301,9 +403,32 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                   Text(
                     'Ausgewählt: ${selectedItems.length} von ${widget.items.length}',
                   ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _selected.updateAll((_, _) => true);
+                              }),
+                        child: const Text('Alle auswählen'),
+                      ),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _selected.updateAll((_, _) => false);
+                              }),
+                        child: const Text('Alle abwählen'),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: selectedItems.isEmpty ? null : _openAssistant,
+                    onPressed: selectedItems.isEmpty || _busy
+                        ? null
+                        : _openAssistant,
                     icon: const Icon(Icons.auto_mode),
                     label: const Text('Coop-Assistent starten'),
                   ),
@@ -325,14 +450,17 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                   children: <Widget>[
                     CheckboxListTile(
                       value: checked,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          _selected[index] = value ?? false;
-                        });
-                      },
+                      onChanged: _busy
+                          ? null
+                          : (bool? value) {
+                              setState(() {
+                                _selected[index] = value ?? false;
+                              });
+                            },
                       title: Text(item.displayName),
                       subtitle: Text(
                         'Menge: ${_quantityText(item)}\n'
+                        'Produkt: ${_saved[_key(item)]?.productLabel ?? 'Noch auswählen'}${_saved[_key(item)] != null && coopProductId(_saved[_key(item)]!.productUrl) == null ? ' (ungültiger Link)' : ''}\n'
                         'Suche: $searchQuery'
                         '${item.coopPreferredProductLabel != null && item.coopPreferredProductLabel!.isNotEmpty ? '\nProfil: ${item.coopPreferredProductLabel}' : ''}',
                       ),
@@ -347,11 +475,15 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                       child: Row(
                         children: <Widget>[
                           FilledButton.tonalIcon(
-                            onPressed: checked
-                                ? () => _openCoopSearch(searchQuery)
+                            onPressed: checked && !_busy
+                                ? () => _chooseProduct(item)
                                 : null,
                             icon: const Icon(Icons.storefront_outlined),
-                            label: const Text('Einzeln öffnen'),
+                            label: Text(
+                              _saved.containsKey(_key(item))
+                                  ? 'Anderes Produkt wählen'
+                                  : 'Coop-Produkt auswählen',
+                            ),
                           ),
                         ],
                       ),

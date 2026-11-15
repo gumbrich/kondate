@@ -4,6 +4,16 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 
 ## 2026-11-15 photo-to-week-plan
 
+### Ingredient selection and spelling follow-up
+
+- The shop preview omitted manual shopping entries, and the basket preparation silently continued with only mapped products. New preparation includes outstanding manual entries and blocks on unresolved selected ingredients; users must choose an actual product or explicitly deselect the ingredient.
+- Saved-product editing previously iterated only predefined keys and could erase custom choices. It now includes all saved keys. Tests cover custom mapping retention, cancelled choices, explicit deselection and deduplication by SKU.
+- The ingredient parser matched `ei` inside `Reis`; its unit mapper also failed on short units and matched `kilogram` as grams. Added regression tests and fixed those cases. Other pre-existing recipe import/amount issues remain tracked separately; unknown amounts must not imply one pack.
+- Local spelling suggestions use a small curated culinary vocabulary plus saved recipe titles, nearest-word distance and explicit acceptance. This is not a general multilingual spellchecker or improved handwriting model. Raw text remains editable; photos are never uploaded.
+- Native Mac: manual ingredient reached preparation; live Coop search displayed multiple products; opening a detail page produced a correctly named product-confirmation dialog. The user subsequently chose Gazi Bio Feta 135 g, one total pack. See the follow-up record below.
+- Additional widget tests initially failed because scrolling disposed the first field and put another target off-screen in the small test viewport. Larger explicit test viewports made the intended interactions deterministic; all 51 tests then passed.
+
+
 - No camera, photo import, or OCR existed in the app. The existing meal-idea/day model is sufficient; imported text does not need new recipe or household schemas.
 - Apple Vision on the supplied handwritten whiteboard missed several weekday/meal lines and misread words. Its high confidence values did not establish correctness. All OCR-derived entries therefore remain unchecked and marked for review.
 - Local grayscale/contrast, red-channel and perspective-correction experiments changed the recognized text but did not consistently improve accuracy. Do not automatically enable these transforms based on this one image.
@@ -60,3 +70,11 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 - Final checks: 27 Flutter tests, 12 selector fixture assertions, clean analysis and a successful Mac release build. Three-product UI evidence preceded the final adapter changes; those changes have automated coverage, with final live retest still open.
 
 - Final native retest on implementation commit `f4bb162`: the screen kept open across callback hot reloads timed out safely; reopening the assistant created fresh navigation delegates and all three products verified at one with the document-replacement guard active. No new pack was added. Reopen a WebView screen after changing its initState navigation callbacks. GitHub CI passed on the implementation commit.
+
+## Ingredient review and feta basket follow-up, 2026-11-15
+
+- Code-only Claude review completed using the separately approved ten source files and three tests. Reproduced unsafe substring normalization, unit replacement, fresh-tomato packaging hints and global ASCII-to-umlaut corruption; fixed with regression coverage. See `claude-review.md` for dispositions, including two findings that did not reproduce.
+- Native Mac: saved feta mapping and the manually entered ingredient survived app restart. Selected only feta; chose one total pack. Initial exact-product read was zero. Two assistant attempts returned uncertain after reload. A read-only basket inspection and fresh product read established no feta/zero before continuing; no blind repeat or automatic batch retry occurred.
+- A direct native click on Coop's visible Add button produced one pack and was allowed to finish without an immediate programmatic reload. Then the assistant reloaded and confirmed one; the actual basket showed Gazi Bio Feta (135 g), quantity one. Existing items were preserved. No checkout/order submission.
+- Cause of the automatic failures is not established: event dispatch/readiness or reloading 1.5 seconds after dispatch may matter. Do not claim that adding a longer fixed delay fixes it. The next investigation should observe completion/readiness without cancelling in-flight cart requests and test on a separately approved target. Do not remove the user's feta just to rerun a test.
+- The current product-level reload verification detects failure correctly. This test proves final persistence with manual assistance, not fully unattended transfer or synchronization with the Android Coop app.

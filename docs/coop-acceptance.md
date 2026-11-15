@@ -38,3 +38,9 @@ The assistant displayed 3/3 verified quantities. This is not a fully unattended 
 Final code checks: 27 Flutter tests and 12 selector fixture assertions passed; analysis clean; Mac release build passed. The final navigation guard passed a fresh-screen native Mac retest: all three products remained at one, with 3/3 verified. CI passed for implementation commit `f4bb162`. Slow-network hydration, live cancellation and Android follow-up remain open.
 
 Record only SKU/count evidence; never commit account identifiers, cookies, delivery details, or credentials.
+
+## Ingredient selection follow-up, 2026-11-15
+
+On PR #36, a manually added Feta entry reached native Coop search. The user chose Gazi Bio Feta 135 g and one total pack. The mapping survived an app restart; preparation was explicitly narrowed to feta only. Two automatic attempts stopped as unconfirmed. Read-only checks established zero before further action. A direct native click on Coop Add succeeded; the assistant then reloaded and verified one without adding another. The actual basket displayed the same product/size and quantity one. No order was submitted.
+
+Result: product choice and final persisted quantity verified with manual assistance. Automatic addition remains unreliable for this case; root cause requires a separate readiness/event-timing investigation. The receipt here is product-name/size plus UI quantity evidence; no new SKU identifier was copied into this record. Prior three-SKU evidence above is unchanged.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'photo_week_plan.dart';
+import 'meal_spelling.dart';
 import 'week_plan_photo_source.dart';
 
 typedef PhotoRecognizer = Future<PhotoWeekDraft> Function(Uint8List photo);
@@ -217,6 +218,13 @@ class _PhotoWeekPlanScreenState extends State<PhotoWeekPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final spellings = {
+      for (final day in WeekdayDe.values)
+        day: MealSpelling.suggestions(
+          _controllers[day]!.text,
+          knownPhrases: widget.recipes.map((recipe) => recipe.title),
+        ),
+    };
     final count = _selected
         .where((d) => _controllers[d]!.text.trim().isNotEmpty)
         .length;
@@ -341,6 +349,23 @@ class _PhotoWeekPlanScreenState extends State<PhotoWeekPlanScreen> {
                       ),
                       onChanged: (_) => setState(() {}),
                     ),
+                    if (spellings[day]!.isNotEmpty) ...[
+                      const Text('Schreibweise prüfen · Küchenwörter DE/CH/EN'),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final suggestion in spellings[day]!)
+                            ActionChip(
+                              label: Text(suggestion),
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() {
+                                      _controllers[day]!.text = suggestion;
+                                    }),
+                            ),
+                        ],
+                      ),
+                    ],
                     if (_drafts[day]?.uncertain == true)
                       const Text(
                         'Bitte prüfen: Handschrift oder Zuordnung unsicher.',

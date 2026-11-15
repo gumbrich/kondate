@@ -1,4 +1,3 @@
-import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -15,15 +14,13 @@ import 'coop_user_preferences.dart';
 import 'coop_user_preferences_store.dart';
 import 'ingredient_formatter.dart';
 import 'purchasable_item.dart';
-import 'purchasable_item_mapper.dart';
+import 'shopping_purchase_plan.dart';
+import 'photo_week_plan.dart';
 
 class ShopPreviewScreen extends StatefulWidget {
   final KondateAppState appState;
 
-  const ShopPreviewScreen({
-    super.key,
-    required this.appState,
-  });
+  const ShopPreviewScreen({super.key, required this.appState});
 
   @override
   State<ShopPreviewScreen> createState() => _ShopPreviewScreenState();
@@ -60,36 +57,29 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
 
   Future<void> _openPreferences() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const CoopPreferencesScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const CoopPreferencesScreen()),
     );
     await _loadAll();
   }
 
   Future<void> _openSavedProducts() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const CoopSavedProductsScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const CoopSavedProductsScreen()),
     );
     await _loadAll();
   }
 
   Future<void> _openCredentials() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const CoopCredentialsScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const CoopCredentialsScreen()),
     );
   }
 
   Future<void> _openCartPrep(List<PurchasableItem> items) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CoopCartPrepScreen(items: items),
-      ),
+      MaterialPageRoute<void>(builder: (_) => CoopCartPrepScreen(items: items)),
     );
+    await _loadAll();
   }
 
   Future<void> _openSavedProductInWebView(CoopSavedProduct product) async {
@@ -104,46 +94,22 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
   }
 
   Future<void> _openCoopLogin() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const CoopLoginScreen(),
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const CoopLoginScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final ShoppingList generatedList = IngredientAggregator.fromRecipes(
-      widget.appState.selectedMealPlanRecipes(),
-      targetServings: widget.appState.targetServings,
+    final purchasableItems = buildShoppingPurchases(
+      widget.appState,
+      overrides: _overrides,
     );
-
-    final Set<String> removedGenerated =
-        widget.appState.shoppingState.removedGeneratedItemIds.toSet();
-
-    final List<dynamic> visibleRawGeneratedItems = generatedList.items
-        .where(
-          (dynamic item) => !removedGenerated.contains(_generatedItemId(item)),
-        )
-        .toList();
-
-    final List<_MergedIngredient> mergedItems =
-        _buildMergedIngredients(visibleRawGeneratedItems);
-
-    final List<PurchasableItem> purchasableItems = mergedItems
-        .map(
-          (_MergedIngredient item) =>
-              item.toPurchasableItem(userOverrides: _overrides),
-        )
-        .toList();
+    final missingMeals = mealsMissingIngredients(widget.appState);
 
     final Map<PurchasableCategory, List<PurchasableItem>> grouped =
         _groupByCategory(purchasableItems);
@@ -185,10 +151,7 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                 children: <Widget>[
                   const Text(
                     'Vorbereitung für Shop-Integration',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -224,6 +187,15 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          if (missingMeals.isNotEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(
+                  'Noch ohne Rezept/Zutaten: ${missingMeals.map((d) => weekdayLabels[d]).join(', ')}. Diese Mahlzeiten sind noch nicht in der Einkaufsliste. Bitte im Wochenplan ein Rezept zuordnen oder Zutaten manuell ergänzen.',
+                ),
+              ),
+            ),
           if (purchasableItems.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 8),
@@ -244,7 +216,8 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
               ...grouped[category]!.map((PurchasableItem item) {
                 final String canonicalKey =
                     IngredientFormatter.canonicalMergeName(item.displayName);
-                final CoopSavedProduct? savedProduct = _savedProducts[canonicalKey];
+                final CoopSavedProduct? savedProduct =
+                    _savedProducts[canonicalKey];
 
                 return Card(
                   child: Padding(
@@ -274,25 +247,22 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                               if (savedProduct != null &&
                                   savedProduct.productUrl.trim().isNotEmpty)
                                 FilledButton.icon(
-                                  onPressed: () => _openSavedProductInWebView(
-                                    savedProduct,
-                                  ),
+                                  onPressed: () =>
+                                      _openSavedProductInWebView(savedProduct),
                                   icon: const Icon(Icons.smart_display),
                                   label: const Text('Im WebView öffnen'),
                                 ),
                               if (savedProduct != null &&
                                   savedProduct.productUrl.trim().isNotEmpty)
                                 FilledButton.tonalIcon(
-                                  onPressed: () => _openDirectUrl(
-                                    savedProduct.productUrl,
-                                  ),
+                                  onPressed: () =>
+                                      _openDirectUrl(savedProduct.productUrl),
                                   icon: const Icon(Icons.open_in_new),
                                   label: const Text('Extern öffnen'),
                                 ),
                               ElevatedButton.icon(
-                                onPressed: () => _openCoopSearch(
-                                  item.coopSearchQuery,
-                                ),
+                                onPressed: () =>
+                                    _openCoopSearch(item.coopSearchQuery),
                                 icon: const Icon(Icons.storefront_outlined),
                                 label: const Text('Bei Coop suchen'),
                               ),
@@ -306,9 +276,8 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
                                   label: const Text('Bevorzugt suchen'),
                                 ),
                               OutlinedButton.icon(
-                                onPressed: () => _openGenericWebSearch(
-                                  item.shopSearchQuery,
-                                ),
+                                onPressed: () =>
+                                    _openGenericWebSearch(item.shopSearchQuery),
                                 icon: const Icon(Icons.search),
                                 label: const Text('Websuche'),
                               ),
@@ -332,124 +301,26 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
   }
 
   static Future<void> _openCoopSearch(String query) async {
-    final Uri uri = Uri.https(
-      'www.coop.ch',
-      '/de/search/',
-      <String, String>{'text': query},
-    );
+    final Uri uri = Uri.https('www.coop.ch', '/de/search/', <String, String>{
+      'text': query,
+    });
 
     await _launchExternalUri(uri);
   }
 
   static Future<void> _openGenericWebSearch(String query) async {
-    final Uri uri = Uri.https(
-      'www.google.com',
-      '/search',
-      <String, String>{'q': query},
-    );
+    final Uri uri = Uri.https('www.google.com', '/search', <String, String>{
+      'q': query,
+    });
 
     await _launchExternalUri(uri);
   }
 
   static Future<void> _launchExternalUri(Uri uri) async {
-    final bool ok = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final bool ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok) {
       throw Exception('Konnte URL nicht öffnen: $uri');
     }
-  }
-
-  static String _generatedItemId(dynamic item) {
-    final dynamic quantity = item.quantity;
-    final String quantityPart = quantity == null
-        ? 'noqty'
-        : '${quantity.value}_${quantity.unit.toString()}';
-    return '${item.name}_$quantityPart';
-  }
-
-  static String _formatUnitForDisplay(String rawUnit) {
-    final String u = rawUnit.toLowerCase().trim();
-
-    switch (u) {
-      case 'unit.gram':
-      case 'gram':
-        return 'gram';
-      case 'unit.kilogram':
-      case 'kilogram':
-        return 'kilogram';
-      case 'unit.milliliter':
-      case 'milliliter':
-        return 'milliliter';
-      case 'unit.liter':
-      case 'liter':
-        return 'liter';
-      case 'unit.piece':
-      case 'piece':
-        return 'piece';
-      case 'unit.bunch':
-      case 'bunch':
-        return 'bunch';
-      case 'unit.teaspoon':
-      case 'teaspoon':
-        return 'teaspoon';
-      case 'unit.tablespoon':
-      case 'tablespoon':
-        return 'tablespoon';
-      default:
-        return '';
-    }
-  }
-
-  static List<_MergedIngredient> _buildMergedIngredients(List<dynamic> items) {
-    final Map<String, _MergedIngredientBucket> buckets =
-        <String, _MergedIngredientBucket>{};
-
-    for (final dynamic item in items) {
-      final dynamic quantity = item.quantity;
-      final double q =
-          quantity == null ? 1.0 : (quantity.value as num).toDouble();
-      final String unit = quantity == null
-          ? ''
-          : _formatUnitForDisplay(quantity.unit.toString());
-
-      final IngredientInterpretation parsed =
-          IngredientParser.parse(item.name.toString(), q, unit);
-
-      final String canonicalName =
-          IngredientFormatter.canonicalMergeName(parsed.name);
-
-      final String key =
-          '$canonicalName|${parsed.unit ?? ''}|${parsed.note ?? ''}';
-
-      buckets.putIfAbsent(
-        key,
-        () => _MergedIngredientBucket(
-          prototype: parsed,
-        ),
-      );
-
-      buckets[key]!.add(parsed.displayQuantity);
-    }
-
-    final List<_MergedIngredient> result = buckets.values.map((
-      _MergedIngredientBucket bucket,
-    ) {
-      return _MergedIngredient(
-        name: bucket.prototype.name,
-        quantity: bucket.totalQuantity,
-        unit: bucket.prototype.unit ?? '',
-        note: bucket.prototype.note,
-      );
-    }).toList();
-
-    result.sort(
-      (_MergedIngredient a, _MergedIngredient b) =>
-          a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-    );
-
-    return result;
   }
 
   static Map<PurchasableCategory, List<PurchasableItem>> _groupByCategory(
@@ -499,7 +370,9 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
         : item.quantity.toStringAsFixed(2).replaceAll('.', ',');
 
     final List<String> lines = <String>[
-      item.unit.isEmpty
+      item.amountDescription != null
+          ? item.amountDescription!
+          : item.unit.isEmpty
           ? 'Menge: $quantityText'
           : 'Menge: $quantityText ${item.unit}',
       'Allgemeine Suche: ${item.shopSearchQuery}',
@@ -525,8 +398,7 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
       lines.add('Bevorzugte Packung: ${item.preferredPackage}');
     }
 
-    if (item.purchaseHeuristic != null &&
-        item.purchaseHeuristic!.isNotEmpty) {
+    if (item.purchaseHeuristic != null && item.purchaseHeuristic!.isNotEmpty) {
       lines.add('Strategie: ${item.purchaseHeuristic}');
     }
 
@@ -535,46 +407,5 @@ class _ShopPreviewScreenState extends State<ShopPreviewScreen> {
     }
 
     return lines.join('\n');
-  }
-}
-
-class _MergedIngredient {
-  final String name;
-  final double quantity;
-  final String unit;
-  final String? note;
-
-  const _MergedIngredient({
-    required this.name,
-    required this.quantity,
-    required this.unit,
-    required this.note,
-  });
-
-  PurchasableItem toPurchasableItem({
-    required Map<String, CoopUserPreferenceOverride> userOverrides,
-  }) {
-    final String sourceName =
-        note == null || note!.isEmpty ? name : '$name $note';
-
-    return PurchasableItemMapper.fromIngredient(
-      quantity: quantity,
-      unit: unit,
-      name: sourceName,
-      userOverrides: userOverrides,
-    );
-  }
-}
-
-class _MergedIngredientBucket {
-  final IngredientInterpretation prototype;
-  double totalQuantity = 0;
-
-  _MergedIngredientBucket({
-    required this.prototype,
-  });
-
-  void add(double quantity) {
-    totalQuantity += quantity;
   }
 }

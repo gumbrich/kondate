@@ -8,12 +8,14 @@ class CoopSavedProductsScreen extends StatefulWidget {
   const CoopSavedProductsScreen({super.key});
 
   @override
-  State<CoopSavedProductsScreen> createState() => _CoopSavedProductsScreenState();
+  State<CoopSavedProductsScreen> createState() =>
+      _CoopSavedProductsScreenState();
 }
 
 class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
   final CoopSavedProductsStore _store = CoopSavedProductsStore();
 
+  List<String> _keys = [];
   bool _loading = true;
   bool _saving = false;
   String? _message;
@@ -30,16 +32,21 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
   }
 
   Future<void> _load() async {
-    final Map<String, CoopSavedProduct> saved = await _store.loadSavedProducts();
+    final Map<String, CoopSavedProduct> saved = await _store
+        .loadSavedProducts();
 
-    for (final CoopProductPreference pref in CoopProductPreferences.defaults) {
-      final CoopSavedProduct? existing = saved[pref.canonicalKey];
+    _keys = {
+      ...CoopProductPreferences.defaults.map((p) => p.canonicalKey),
+      ...saved.keys,
+    }.toList()..sort();
+    for (final key in _keys) {
+      final CoopSavedProduct? existing = saved[key];
 
-      _labelControllers[pref.canonicalKey] = TextEditingController(
+      _labelControllers[key] = TextEditingController(
         text: existing?.productLabel ?? '',
       );
 
-      _urlControllers[pref.canonicalKey] = TextEditingController(
+      _urlControllers[key] = TextEditingController(
         text: existing?.productUrl ?? '',
       );
     }
@@ -58,13 +65,13 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
 
     final Map<String, CoopSavedProduct> products = <String, CoopSavedProduct>{};
 
-    for (final CoopProductPreference pref in CoopProductPreferences.defaults) {
-      final String label = _labelControllers[pref.canonicalKey]!.text.trim();
-      final String url = _urlControllers[pref.canonicalKey]!.text.trim();
+    for (final key in _keys) {
+      final String label = _labelControllers[key]!.text.trim();
+      final String url = _urlControllers[key]!.text.trim();
 
       if (label.isNotEmpty && url.isNotEmpty) {
-        products[pref.canonicalKey] = CoopSavedProduct(
-          canonicalKey: pref.canonicalKey,
+        products[key] = CoopSavedProduct(
+          canonicalKey: key,
           productLabel: label,
           productUrl: url,
         );
@@ -94,11 +101,7 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -133,7 +136,7 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
             ),
           ],
           const SizedBox(height: 8),
-          ...CoopProductPreferences.defaults.map((CoopProductPreference pref) {
+          ..._keys.map((key) {
             return Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),
@@ -141,7 +144,7 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      pref.canonicalKey,
+                      key,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -149,7 +152,7 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
-                      controller: _labelControllers[pref.canonicalKey],
+                      controller: _labelControllers[key],
                       decoration: const InputDecoration(
                         labelText: 'Produktname bei Coop',
                         hintText: 'z. B. Coop Naturaplan Milch UHT 1 l',
@@ -158,7 +161,7 @@ class _CoopSavedProductsScreenState extends State<CoopSavedProductsScreen> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
-                      controller: _urlControllers[pref.canonicalKey],
+                      controller: _urlControllers[key],
                       decoration: const InputDecoration(
                         labelText: 'Produktlink',
                         hintText: 'https://www.coop.ch/...',

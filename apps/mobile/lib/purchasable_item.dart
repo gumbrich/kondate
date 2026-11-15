@@ -23,6 +23,7 @@ class PurchasableItem {
   final String? preferredPackage;
   final String? purchaseHeuristic;
   final String? note;
+  final String? amountDescription;
 
   const PurchasableItem({
     required this.displayName,
@@ -36,5 +37,6 @@ class PurchasableItem {
     this.preferredPackage,
     this.purchaseHeuristic,
     this.note,
+    this.amountDescription,
   });
 }

@@ -24,6 +24,45 @@ class DeniedCamera extends WeekPlanPhotoSource {
 }
 
 void main() {
+  testWidgets(
+    'spelling suggestion changes draft only after a tap and does not select day',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhotoWeekPlanScreen(
+            mealPlan: KondateAppState.initial().mealPlan,
+            recipes: const [],
+          ),
+        ),
+      );
+      final field = find.byType(TextField).first;
+      await tester.ensureVisible(field);
+      await tester.enterText(field, 'Zitronenrisatho');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        'Zitronenrisatho',
+      );
+      final suggestion = find.widgetWithText(ActionChip, 'Zitronenrisotto');
+      await tester.ensureVisible(suggestion);
+      await tester.tap(suggestion);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        'Zitronenrisotto',
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile).first)
+            .value,
+        false,
+      );
+    },
+  );
   final recipe = Recipe(
     id: 'old',
     title: 'Existing recipe',
