@@ -120,4 +120,21 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('clips small OCR boundary overshoots and keeps the recognized text', () {
+    final line = RecognizedPhotoLine.fromMap({
+      'text': 'Mo) Pasta',
+      'x': -0.0001,
+      'y': 0.99,
+      'width': 0.4,
+      'height': 0.0101,
+    });
+    expect(line.x, 0);
+    expect(line.width, closeTo(0.3999, 0.00001));
+    expect(line.y + line.height, 1);
+    expect(
+      LocalWeekPlanRecognizer.draftFromLines([line]).days.single.meal,
+      'Pasta',
+    );
+  });
 }

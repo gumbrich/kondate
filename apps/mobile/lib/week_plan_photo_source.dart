@@ -72,7 +72,9 @@ class WeekPlanPhotoSource {
       );
       image = (await codec.getNextFrame()).image;
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (data == null || data.lengthInBytes > 4 * 1024 * 1024) {
+      // At most 2000 × 2000 pixels. PNG can approach the raw RGBA size for
+      // textured photos; a cloud-upload-sized 4 MB cap rejects valid captures.
+      if (data == null || data.lengthInBytes > 16 * 1024 * 1024) {
         throw const FormatException(
           'Bitte ein kleineres Foto oder einen engeren Ausschnitt wählen.',
         );

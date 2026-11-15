@@ -18,7 +18,7 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 val bytes = call.arguments as? ByteArray
-                if (bytes == null || bytes.size > 4 * 1024 * 1024) {
+                if (bytes == null || bytes.size > 16 * 1024 * 1024) {
                     result.error("invalid_photo", "Bitte ein kleineres Foto auswählen.", null)
                     return@setMethodCallHandler
                 }

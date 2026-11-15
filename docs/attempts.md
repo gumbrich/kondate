@@ -14,6 +14,7 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 - Android initially needed an installed SDK Platform 34; the build completed after Gradle installed it using an already-accepted SDK license. The bundled ML Kit build then passed. No physical Android test has been performed.
 - A copied one-pixel PNG test fixture had invalid image data; replaced it with a valid generated PNG containing a synthetic metadata chunk. No private photo is included in tests.
 - Native Mac generated-image integration test passed for all seven days. This proves the pipeline, not handwriting quality. Existing real recipes/week plan were preserved; test persistence uses isolated preferences.
+- The approved Claude code-only review initially retried at the service and returned no report before interruption. A shorter low-effort request completed. It found an overly small normalized PNG cap and brittle handling of OCR boxes slightly outside the image. Both were fixed with regression tests; see [review record](claude-review.md).
 
 ## 2026-11-15 Coop baseline
 

@@ -42,9 +42,9 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 
 ## Current branch
 
-`codex/photo-week-plan`, based on `codex/coop-basket-verification` at `ba71d78` to preserve the completed Coop work. This is separate from the LangGraph experiment. The underlying Coop changes are in [draft PR #34](https://github.com/gumbrich/kondate/pull/34).
+`codex/photo-week-plan`, [draft PR #35](https://github.com/gumbrich/kondate/pull/35), based on `codex/coop-basket-verification` at `ba71d78` to preserve the completed Coop work. This is separate from the LangGraph experiment. The underlying Coop changes are in [draft PR #34](https://github.com/gumbrich/kondate/pull/34).
 
-Photo import adds camera/gallery selection, offline native text recognition, explicit review and day selection, and safe plan merging. All 40 app tests, analysis, and 12 existing Coop selector checks passed. No photo upload, backend changes or API keys. Mac debug/release and Android debug builds passed; the Mac native integration test read a generated seven-day example. The supplied handwritten photo required corrections. See the [photo guide](photo-week-plan.md) for exact scope and remaining device checks.
+Photo import adds camera/gallery selection, offline native text recognition, explicit review and day selection, and safe plan merging. All 42 app tests, analysis, and 12 existing Coop selector checks passed. [GitHub CI](https://github.com/gumbrich/kondate/actions/runs/43719135601) passed for implementation commit `4651c80`. No photo upload, backend changes or API keys. Mac debug/release and Android debug builds passed; the Mac native integration test read a generated seven-day example. The supplied handwritten photo required corrections. See the [photo guide](photo-week-plan.md) for exact scope and remaining device checks.
 
 ## Previous Coop implementation
 

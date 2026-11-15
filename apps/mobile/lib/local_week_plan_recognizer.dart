@@ -138,18 +138,25 @@ class RecognizedPhotoLine {
       'width',
       'height',
     ].map((key) => raw[key]).toList();
-    if (text is! String ||
-        values.any((v) => v is! num || !v.isFinite || v < 0 || v > 1)) {
+    if (text is! String || values.any((v) => v is! num || !v.isFinite)) {
       throw const FormatException(
         'Texterkennung konnte nicht gelesen werden. Bitte erneut versuchen.',
       );
     }
+    // Native OCR can slightly overshoot image edges on skewed text. Clip the
+    // rectangle instead of discarding every usable line from that photo.
+    final x = (values[0] as num).toDouble();
+    final y = (values[1] as num).toDouble();
+    final left = x.clamp(0.0, 1.0);
+    final top = y.clamp(0.0, 1.0);
+    final right = (x + (values[2] as num)).clamp(left, 1.0);
+    final bottom = (y + (values[3] as num)).clamp(top, 1.0);
     return RecognizedPhotoLine(
       text,
-      x: (values[0] as num).toDouble(),
-      y: (values[1] as num).toDouble(),
-      width: (values[2] as num).toDouble(),
-      height: (values[3] as num).toDouble(),
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
     );
   }
 }

@@ -41,7 +41,7 @@ class MainFlutterWindow: NSWindow {
     textChannel.setMethodCallHandler { call, result in
       guard call.method == "recognize" else { result(FlutterMethodNotImplemented); return }
       guard let bytes = call.arguments as? FlutterStandardTypedData,
-            bytes.data.count <= 4 * 1024 * 1024 else {
+            bytes.data.count <= 16 * 1024 * 1024 else {
         result(FlutterError(code: "invalid_photo", message: "Bitte ein kleineres Foto auswählen.", details: nil))
         return
       }

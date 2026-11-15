@@ -50,7 +50,7 @@ The device integration test generates a synthetic seven-day image in memory and 
 - `image_picker`: gallery/file selection and Android camera; Android lost-image recovery returns to review after activity recreation.
 - Mac: AVFoundation camera sheet, camera permission explanation, sandbox camera and selected-file read entitlements; Vision recognition on a background queue.
 - Android: native ML Kit `com.google.mlkit:text-recognition:16.0.1`, with the Latin model bundled at build time.
-- Flutter normalizes images to at most 2000 pixels on the longest side, strips metadata by re-encoding pixels as PNG, and limits source files to 20 MB / normalized output to 4 MB.
+- Flutter normalizes images to at most 2000 pixels on the longest side, strips metadata by re-encoding pixels as PNG, and limits source files to 20 MB / normalized output to 16 MB.
 - iOS has camera/photo-library usage descriptions but no native OCR adapter in this change; other unsupported recognition platforms show a manual-entry fallback.
 - No LangGraph, Python service, cloud account, API key, or training pipeline is needed for this flow.
 
@@ -60,7 +60,7 @@ Native references: [Apple Vision text recognition](https://developer.apple.com/d
 
 - Verified Mac: camera permission completed by user; a captured image reached review. The supplied local JPEG opened, native text recognition populated an editable draft, and cancelling preserved the existing week plan.
 - Verified: Mac device integration test recognized all seven weekdays/meals in a generated printed example.
-- Verified: 40 Flutter app tests, clean analysis, 12 existing Coop selector checks, and Mac debug/release and Android debug builds. Automated checks cover merging/persistence, stale recipe links, ambiguous rows, missing/duplicate weekdays, camera denial, image normalization, and overwrite confirmation.
+- Verified: 42 Flutter app tests, clean analysis, 12 existing Coop selector checks, GitHub CI on `4651c80`, and Mac debug/release and Android debug builds. Automated checks cover merging/persistence, stale recipe links, ambiguous rows, missing/duplicate weekdays, camera denial, image normalization, and overwrite confirmation.
 - Not yet verified: physical Android camera/recognition, Android activity-death recovery, denied/revoked Mac permissions on a real device, or a complete real-photo plan saved on the user's account. Persistence is covered with isolated test preferences instead.
 - Known limitation: difficult handwriting remains inaccurate. Local grayscale, red-channel and perspective experiments did not consistently improve the supplied photo; none was enabled automatically.
 
