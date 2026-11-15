@@ -2,6 +2,20 @@
 
 Preserve unsuccessful approaches here so the next agent does not repeat them. Dates below are observation dates unless specified otherwise. Never include passwords, cookies, tokens, personal addresses, or private basket contents.
 
+## 2026-11-15 photo-to-week-plan
+
+- No camera, photo import, or OCR existed in the app. The existing meal-idea/day model is sufficient; imported text does not need new recipe or household schemas.
+- Apple Vision on the supplied handwritten whiteboard missed several weekday/meal lines and misread words. Its high confidence values did not establish correctness. All OCR-derived entries therefore remain unchecked and marked for review.
+- Local grayscale/contrast, red-channel and perspective-correction experiments changed the recognized text but did not consistently improve accuracy. Do not automatically enable these transforms based on this one image.
+- The user explicitly chose on-device recognition, accepted manual corrections, and allowed open-source recognizers if useful. No photo was sent to Anthropic and no cloud-recognition endpoint was added. Mac uses Apple Vision; Android uses the bundled ML Kit Latin model.
+- `image_picker` has no default Mac camera implementation. A small AVFoundation sheet supplies capture; the plugin still handles selected files and Android camera/gallery. Both Mac build configurations need camera and selected-file read entitlements.
+- The protected macOS camera permission prompt could not be controlled by the UI tool. User allowed access; a captured image then appeared in review. Do not infer camera denial from that tool restriction.
+- Raw Swift Vision execution failed in the restricted process but worked in the normal Mac environment. Native app OCR also succeeded. Photo data stayed local throughout.
+- Android initially needed an installed SDK Platform 34; the build completed after Gradle installed it using an already-accepted SDK license. The bundled ML Kit build then passed. No physical Android test has been performed.
+- A copied one-pixel PNG test fixture had invalid image data; replaced it with a valid generated PNG containing a synthetic metadata chunk. No private photo is included in tests.
+- Native Mac generated-image integration test passed for all seven days. This proves the pipeline, not handwriting quality. Existing real recipes/week plan were preserved; test persistence uses isolated preferences.
+- The approved Claude code-only review initially retried at the service and returned no report before interruption. A shorter low-effort request completed. It found an overly small normalized PNG cap and brittle handling of OCR boxes slightly outside the image. Both were fixed with regression tests; see [review record](claude-review.md).
+
 ## 2026-11-15 Coop baseline
 
 - User recalls Coop ordering did not work previously; exact historical failure is not yet established.

@@ -367,6 +367,23 @@ class KondateAppState {
     );
   }
 
+  /// Import only explicitly selected, nonblank days. A changed meal must not
+  /// keep a recipe link (and shopping ingredients) belonging to the old meal.
+  KondateAppState applyPhotoMealIdeas(Map<WeekdayDe, String> ideas) {
+    var updated = this;
+    for (final entry in ideas.entries) {
+      final meal = entry.value.trim();
+      if (meal.isEmpty) continue;
+      final old = mealPlan.entryFor(entry.key);
+      updated = updated.updateMealPlanEntry(
+        weekday: entry.key,
+        dishIdea: meal,
+        recipeId: old?.dishIdea?.trim() == meal ? old?.recipeId : null,
+      );
+    }
+    return updated;
+  }
+
   KondateAppState clearWeekday(WeekdayDe weekday) {
     final List<MealPlanEntry> filtered = mealPlan.entries
         .where((MealPlanEntry entry) => entry.weekday != weekday)

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:core/core.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +10,9 @@ import 'household_screen.dart';
 import 'household_sync_provider.dart';
 import 'manual_recipe_screen.dart';
 import 'meal_plan_day_screen.dart';
+import 'local_week_plan_recognizer.dart';
+import 'photo_week_plan_screen.dart';
+import 'week_plan_photo_source.dart';
 import 'recipe_list_section.dart';
 import 'recipe_search_provider.dart';
 import 'shopping_list_screen.dart';
@@ -87,6 +92,21 @@ class _KondateHomeState extends State<KondateHome> {
 
       if (_householdId != null) {
         await _loadFromHousehold(showLoader: false);
+      }
+      // Android may recreate the activity while the camera/gallery is open.
+      // Recover only into the review screen, never directly into saved state.
+      try {
+        final recovered = await WeekPlanPhotoSource().recover();
+        if (recovered != null && mounted) {
+          await _openPhotoWeekPlan(initialPhoto: recovered);
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _error =
+                'Das letzte Foto konnte nicht wiederhergestellt werden. Bitte erneut auswählen.';
+          });
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -378,6 +398,33 @@ class _KondateHomeState extends State<KondateHome> {
         ),
       ),
     );
+  }
+
+  Future<void> _openPhotoWeekPlan({Uint8List? initialPhoto}) async {
+    final result = await Navigator.of(context).push<Map<WeekdayDe, String>>(
+      MaterialPageRoute(
+        builder: (_) => PhotoWeekPlanScreen(
+          mealPlan: _appState.mealPlan,
+          recipes: _appState.recipes,
+          initialPhoto: initialPhoto,
+          recognize: LocalWeekPlanRecognizer().recognize,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _appState = _appState.applyPhotoMealIdeas(result);
+    });
+    try {
+      await _persistState();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error =
+              'Der Wochenplan konnte nicht gespeichert werden. Bitte erneut versuchen.';
+        });
+      }
+    }
   }
 
   Future<void> _openWeeklySuggestions() async {
@@ -794,6 +841,11 @@ class _KondateHomeState extends State<KondateHome> {
                     recipes: _appState.recipes,
                     onEdit: _editWeekday,
                     onClear: _clearWeekday,
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _openPhotoWeekPlan,
+                    icon: const Icon(Icons.add_a_photo_outlined),
+                    label: const Text('Wochenplan aus Foto'),
                   ),
                   const SizedBox(height: 12),
                   RecipeListSection(
