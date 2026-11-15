@@ -25,3 +25,13 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 - Automatic approval review rejected sending the prepared six-source-file plus test-file review bundle to Anthropic without explicit source-transfer approval. User approval is pending; Claude has not reviewed this branch.
 - Flutter dependency resolution rewrites unrelated Linux/Windows generated plugin registration files. Exclude that generated churn from this Mac/Coop change.
 
+
+## Native Mac follow-up
+
+- User completed Coop sign-in inside Kondate. Session survived the assistant's reload.
+- First quantity read failed before any click: the narrow WebView layout uses `display: contents` on `[data-product-basic-info]`, giving that container zero client rectangles. The wide public-page layout uses `display: flex`. Visibility now includes visible descendants for `display: contents`; read-only verification returned quantity 0 for SKU 6665497.
+- Added a read-only quantity button and debug-only SKU/count/selector diagnostics. These do not log URLs, credentials, account content, cookies or addresses.
+- A subsequent single add did not produce a confirmed increment after reload. The assistant stopped as uncertain. Opening Coop's actual basket then displayed a delivery-address confirmation. Cause is not proven; user must resolve that prompt directly before another write.
+- Auto-review rejected an earlier retry because it considered unreadable state a duplicate-write risk. A separate read-only check established quantity 0 before the next test. Never bypass an uncertain result by automatically repeating the action.
+- GitHub's unpinned stable SDK resolved to Flutter 3.50.0 and failed analysis on Material API deprecations throughout the existing app. CI is now pinned to the locally tested Flutter 3.41.5; a future SDK migration should be a separate change.
+- Explicit approval to send the six changed source files and test file to Anthropic was received. Claude's read-only review is running; no report yet.

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'coop_basket_scripts.dart';
@@ -9,6 +11,7 @@ import 'coop_basket_service.dart';
 class CoopBasketWebView implements CoopBasketPage {
   final WebViewController controller;
   Completer<void>? _load;
+  String? _lastDiagnostic;
 
   CoopBasketWebView(this.controller);
 
@@ -45,12 +48,22 @@ class CoopBasketWebView implements CoopBasketPage {
   }
 
   @override
-  Future<CoopBasketSnapshot> read(String productId) async =>
-      CoopBasketSnapshot.fromResult(
-        await controller.runJavaScriptReturningResult(
-          CoopBasketScripts.read(productId),
-        ),
-      );
+  Future<CoopBasketSnapshot> read(String productId) async {
+    final Map<String, dynamic> data = decodeCoopResult(
+      await controller.runJavaScriptReturningResult(
+        CoopBasketScripts.read(productId),
+      ),
+    );
+    if (kDebugMode) {
+      // Only SKU/count/selector state: never URLs, cookies, or account content.
+      final String diagnostic = jsonEncode(data);
+      if (diagnostic != _lastDiagnostic) {
+        debugPrint('Coop basket: $diagnostic');
+        _lastDiagnostic = diagnostic;
+      }
+    }
+    return CoopBasketSnapshot.fromResult(data);
+  }
 
   @override
   Future<bool> addOne(String productId, int expectedQuantity) async =>

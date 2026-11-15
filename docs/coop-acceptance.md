@@ -31,8 +31,8 @@ Device: Mac (macOS 15.6); Android follow-up pending.
 
 Tracking: [GitHub issue #32](https://github.com/gumbrich/kondate/issues/32).
 
-Native three-product result: **Pending sign-in and user-selected products/quantities**. Automated state-machine tests and public-page inspection are not substitutes for this test.
+Native three-product result: **Pending delivery-address confirmation and successful writes**. Automated state-machine tests and public-page inspection are not substitutes for this test.
 
-Pack-target dialog, missing-link warning, product page and sign-in form rendered in the updated Mac app. No authenticated basket action was performed.
+Pack-target dialog, missing-link warning, product page and sign-in form rendered in the updated Mac app. User signed in successfully. The corrected narrow-layout reader returned 0 for SKU 6665497. A single authenticated add did not produce a confirmed increment; the assistant stopped. Opening the basket requested delivery-address confirmation. User selected porridge as the third product; plain Naturaplan Bio Porridge Nature 400 g (SKU 6805933) was located. Proposed test targets are one pack each; no order submitted.
 
 Record only SKU, desired count, observed count, and pass/fail. Do not commit account identifiers, cookies, delivery details, or credentials.

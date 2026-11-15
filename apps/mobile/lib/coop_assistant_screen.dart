@@ -83,6 +83,26 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       _statuses[index] == _Status.pending ||
       _statuses[index] == _Status.blocked;
 
+  Future<void> _readQuantity() async {
+    final String? id = coopProductId(_current.product.productUrl);
+    if (id == null) return;
+    String message;
+    try {
+      final CoopBasketSnapshot state = await _page.read(id);
+      message = state.loginRequired
+          ? 'Bitte direkt bei Coop anmelden.'
+          : state.ready && state.productId == id && state.quantity != null
+          ? 'Aktuell angezeigt: ${state.quantity} Packung(en).'
+          : 'Produktmenge derzeit nicht lesbar.';
+    } catch (_) {
+      message = 'Coop-Seite konnte nicht gelesen werden.';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _run({bool all = false}) async {
     if (_running || _loading) return;
     setState(() {
@@ -145,6 +165,11 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       appBar: AppBar(
         title: Text('Coop-Assistent ${_index + 1}/${widget.items.length}'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Menge nur lesen',
+            onPressed: _running || _loading ? null : _readQuantity,
+            icon: const Icon(Icons.visibility_outlined),
+          ),
           IconButton(
             tooltip: 'Produkt neu öffnen',
             onPressed: _running || _loading ? null : () => _openIndex(_index),
