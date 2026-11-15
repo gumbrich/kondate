@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
 from household_store import HouseholdStore
 from importer import BackendRecipeImporter
@@ -15,11 +15,11 @@ from models import (
     RecipeSearchResponse,
     UpdateHouseholdStateRequest,
 )
-from providers.real_provider import RealSearchProvider
+from recipe_search_graph import GraphRecipeSearchProvider
+from search_config import get_search_workflow
 
 app = FastAPI(title="Kondate Search API", version="0.7.0")
 
-provider = RealSearchProvider()
 importer = BackendRecipeImporter()
 households = HouseholdStore()
 
@@ -30,8 +30,11 @@ def health() -> dict[str, str]:
 
 
 @app.post("/search", response_model=RecipeSearchResponse)
-def search_recipes(request: RecipeSearchRequest) -> RecipeSearchResponse:
-    return provider.search(request)
+def search_recipes(
+    request: RecipeSearchRequest,
+    workflow: GraphRecipeSearchProvider = Depends(get_search_workflow),
+) -> RecipeSearchResponse:
+    return workflow.search(request)
 
 
 @app.post("/import", response_model=ImportRecipeResponse)
