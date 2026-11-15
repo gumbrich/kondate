@@ -40,6 +40,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
     _controller.setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (_) {
+          _page.onPageStarted();
           if (mounted) setState(() => _loading = true);
         },
         onPageFinished: (_) {
@@ -47,6 +48,9 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
           if (mounted) setState(() => _loading = false);
         },
         onWebResourceError: (WebResourceError error) {
+          if (error.errorCode == -999) {
+            return; // WKWebView redirect cancellation.
+          }
           if (error.isForMainFrame == true) {
             _page.onPageError();
             if (mounted) setState(() => _loading = false);
@@ -70,7 +74,7 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _statuses[index] = _Status.blocked;
+          if (_retryable(index)) _statuses[index] = _Status.blocked;
           _messages[index] =
               'Coop-Seite konnte nicht geladen werden. Bitte erneut öffnen.';
         });
@@ -118,7 +122,16 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
           : <int>[_index];
       for (final int index in indices) {
         if (!mounted || _cancelRequested) break;
-        if (index != _index && !await _openIndex(index)) break;
+        final String? currentId = coopProductId(
+          await _controller.currentUrl() ?? '',
+        );
+        if (!mounted || _cancelRequested) break;
+        if ((index != _index ||
+                currentId !=
+                    coopProductId(widget.items[index].product.productUrl)) &&
+            !await _openIndex(index)) {
+          break;
+        }
         if (!mounted || _cancelRequested) break;
         final CoopBasketItem item = widget.items[index];
         final CoopBasketResult result = await _service.ensureQuantity(
@@ -161,121 +174,126 @@ class _CoopAssistantScreenState extends State<CoopAssistantScreen> {
       );
     }
     final int verified = _statuses.where((s) => s == _Status.verified).length;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Coop-Assistent ${_index + 1}/${widget.items.length}'),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Menge nur lesen',
-            onPressed: _running || _loading ? null : _readQuantity,
-            icon: const Icon(Icons.visibility_outlined),
-          ),
-          IconButton(
-            tooltip: 'Produkt neu öffnen',
-            onPressed: _running || _loading ? null : () => _openIndex(_index),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  _current.product.productLabel,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+    return PopScope(
+      canPop: !_running,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Coop-Assistent ${_index + 1}/${widget.items.length}'),
+          actions: <Widget>[
+            IconButton(
+              tooltip: 'Menge nur lesen',
+              onPressed: _running || _loading ? null : _readQuantity,
+              icon: const Icon(Icons.visibility_outlined),
+            ),
+            IconButton(
+              tooltip: 'Produkt neu öffnen',
+              onPressed: _running || _loading ? null : () => _openIndex(_index),
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    _current.product.productLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
-                Text(
-                  'Ziel im Warenkorb: ${_current.targetQuantity} Packung(en) insgesamt',
-                ),
-                Text(
-                  '${_label(_statuses[_index])} · $verified/${widget.items.length} automatisch bestätigt',
-                ),
-                if (_messages[_index] != null) Text(_messages[_index]!),
-                const Text(
-                  'Bei einer Anmeldung bitte direkt auf der Coop-Seite fortfahren. '
-                  'Unklare Ergebnisse werden nicht automatisch wiederholt.',
-                ),
-              ],
+                  Text(
+                    'Ziel im Warenkorb: ${_current.targetQuantity} Packung(en) insgesamt',
+                  ),
+                  Text(
+                    '${_label(_statuses[_index])} · $verified/${widget.items.length} automatisch bestätigt',
+                  ),
+                  if (_messages[_index] != null) Text(_messages[_index]!),
+                  const Text(
+                    'Bei einer Anmeldung bitte direkt auf der Coop-Seite fortfahren. '
+                    'Unklare Ergebnisse werden nicht automatisch wiederholt.',
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (_loading || _running) const LinearProgressIndicator(),
-          Expanded(
-            child: AbsorbPointer(
-              absorbing: _running,
-              child: WebViewWidget(controller: _controller),
+            if (_loading || _running) const LinearProgressIndicator(),
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: _running,
+                child: WebViewWidget(controller: _controller),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                OutlinedButton(
-                  onPressed: _running || _loading || _index == 0
-                      ? null
-                      : () => _openIndex(_index - 1),
-                  child: const Text('Zurück'),
-                ),
-                FilledButton(
-                  onPressed: _running || _loading ? null : () => _run(),
-                  child: const Text('Zielmenge prüfen / ergänzen'),
-                ),
-                FilledButton.tonal(
-                  onPressed:
-                      _running ||
-                          _loading ||
-                          !List<int>.generate(
-                            widget.items.length,
-                            (i) => i,
-                          ).any(_retryable)
-                      ? null
-                      : () => _run(all: true),
-                  child: const Text('Offene Produkte bearbeiten'),
-                ),
-                if (_running)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
                   OutlinedButton(
-                    onPressed: () => setState(() => _cancelRequested = true),
-                    child: const Text('Stoppen'),
+                    onPressed: _running || _loading || _index == 0
+                        ? null
+                        : () => _openIndex(_index - 1),
+                    child: const Text('Zurück'),
                   ),
-                OutlinedButton(
-                  onPressed:
-                      _running || _loading || _index == widget.items.length - 1
-                      ? null
-                      : () => _openIndex(_index + 1),
-                  child: const Text('Weiter'),
-                ),
-                OutlinedButton(
-                  onPressed: _running
-                      ? null
-                      : () => setState(() {
-                          _statuses[_index] = _Status.manual;
-                          _messages[_index] =
-                              'Menge vom Nutzer im Warenkorb geprüft.';
-                        }),
-                  child: const Text('Im Warenkorb selbst geprüft'),
-                ),
-                OutlinedButton(
-                  onPressed: _running
-                      ? null
-                      : () => setState(() {
-                          _statuses[_index] = _Status.skipped;
-                          _messages[_index] =
-                              'Für diesen Durchlauf übersprungen.';
-                        }),
-                  child: const Text('Überspringen'),
-                ),
-              ],
+                  FilledButton(
+                    onPressed: _running || _loading ? null : () => _run(),
+                    child: const Text('Zielmenge prüfen / ergänzen'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed:
+                        _running ||
+                            _loading ||
+                            !List<int>.generate(
+                              widget.items.length,
+                              (i) => i,
+                            ).any(_retryable)
+                        ? null
+                        : () => _run(all: true),
+                    child: const Text('Offene Produkte bearbeiten'),
+                  ),
+                  if (_running)
+                    OutlinedButton(
+                      onPressed: () => setState(() => _cancelRequested = true),
+                      child: const Text('Stoppen'),
+                    ),
+                  OutlinedButton(
+                    onPressed:
+                        _running ||
+                            _loading ||
+                            _index == widget.items.length - 1
+                        ? null
+                        : () => _openIndex(_index + 1),
+                    child: const Text('Weiter'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () => setState(() {
+                            _statuses[_index] = _Status.manual;
+                            _messages[_index] =
+                                'Menge vom Nutzer im Warenkorb geprüft.';
+                          }),
+                    child: const Text('Im Warenkorb selbst geprüft'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () => setState(() {
+                            _statuses[_index] = _Status.skipped;
+                            _messages[_index] =
+                                'Für diesen Durchlauf übersprungen.';
+                          }),
+                    child: const Text('Überspringen'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -11,12 +11,13 @@ Use Codex to implement a small GitHub issue and Claude Code to independently rev
 
 ## Local commands
 
-From `apps/mobile/`:
+Use Flutter **3.41.5**, matching CI. From `apps/mobile/`:
 
 ```sh
 flutter pub get
 flutter analyze
 flutter test
+node tool/check_coop_selectors.mjs
 flutter run -d macos
 ```
 
@@ -37,3 +38,11 @@ Every pull request records:
 - Independent reviewer, findings, and resolution.
 
 Keep configuration files and secrets local. Do not modify household data or saved recipes as part of a test without recording the intended change.
+
+## Using the Coop assistant
+
+Open shopping list → shop preview → prepare Coop basket → start assistant. Choose **total packs**, including existing cart quantities. The milk default may be a multipack: check the product label and size. Use “Weiteres Coop-Produkt für diesen Einkauf” to include an extra product by name and Coop link; this does not save a preference.
+
+Sign in and confirm any delivery-address prompt directly at Coop. The eye button reads the displayed quantity without changing it. Run a target or the pending products. Uncertain writes stop the batch. Multi-pack promotional controls require manual adjustment on Coop; then rerun verification for the chosen target. Checkout stays manual.
+
+The selector check uses Node 18+ without npm packages or network access. It runs actual production JavaScript helpers against small DOM fixtures; it does not replace native acceptance.

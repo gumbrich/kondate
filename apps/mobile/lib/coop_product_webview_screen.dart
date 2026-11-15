@@ -35,12 +35,16 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onWebResourceError: (WebResourceError error) {
+            if (error.errorCode == -999) {
+              return; // WKWebView redirect cancellation.
+            }
             if (error.isForMainFrame == true) {
               _basketPage.onPageError();
               if (mounted) setState(() => _loading = false);
             }
           },
           onPageStarted: (_) {
+            _basketPage.onPageStarted();
             if (!mounted) return;
             setState(() {
               _loading = true;
@@ -304,61 +308,64 @@ class _CoopProductWebViewScreenState extends State<CoopProductWebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Seite prüfen',
-            onPressed: _inspectPage,
-            icon: const Icon(Icons.rule_folder_outlined),
-          ),
-          IconButton(
-            tooltip: 'Kandidaten prüfen',
-            onPressed: _inspectCandidates,
-            icon: const Icon(Icons.list_alt),
-          ),
-          IconButton(
-            tooltip: 'Titel testen',
-            onPressed: _inspectTitle,
-            icon: const Icon(Icons.info_outline),
-          ),
-          IconButton(
-            tooltip: 'Neu laden',
-            onPressed: _runningAction || _loading ? null : _reload,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Warenkorb-Zielmenge prüfen',
-            onPressed: _runningAction || _loading ? null : _runAddToCartJs,
-            icon: const Icon(Icons.play_arrow),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: <Widget>[
-          AbsorbPointer(
-            absorbing: _runningAction,
-            child: WebViewWidget(controller: _controller),
-          ),
-          if (_loading) const LinearProgressIndicator(),
-          if (_lastJsResult != null)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
-              child: Card(
-                color: Colors.black87,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SelectableText(
-                    'Warenkorb-Prüfung:\n$_lastJsResult',
-                    style: const TextStyle(color: Colors.white),
+    return PopScope(
+      canPop: !_runningAction,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: <Widget>[
+            IconButton(
+              tooltip: 'Seite prüfen',
+              onPressed: _inspectPage,
+              icon: const Icon(Icons.rule_folder_outlined),
+            ),
+            IconButton(
+              tooltip: 'Kandidaten prüfen',
+              onPressed: _inspectCandidates,
+              icon: const Icon(Icons.list_alt),
+            ),
+            IconButton(
+              tooltip: 'Titel testen',
+              onPressed: _inspectTitle,
+              icon: const Icon(Icons.info_outline),
+            ),
+            IconButton(
+              tooltip: 'Neu laden',
+              onPressed: _runningAction || _loading ? null : _reload,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Warenkorb-Zielmenge prüfen',
+              onPressed: _runningAction || _loading ? null : _runAddToCartJs,
+              icon: const Icon(Icons.play_arrow),
+            ),
+          ],
+        ),
+        body: Stack(
+          children: <Widget>[
+            AbsorbPointer(
+              absorbing: _runningAction,
+              child: WebViewWidget(controller: _controller),
+            ),
+            if (_loading) const LinearProgressIndicator(),
+            if (_lastJsResult != null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Card(
+                  color: Colors.black87,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SelectableText(
+                      'Warenkorb-Prüfung:\n$_lastJsResult',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

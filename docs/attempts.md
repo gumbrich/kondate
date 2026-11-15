@@ -35,3 +35,12 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 - Auto-review rejected an earlier retry because it considered unreadable state a duplicate-write risk. A separate read-only check established quantity 0 before the next test. Never bypass an uncertain result by automatically repeating the action.
 - GitHub's unpinned stable SDK resolved to Flutter 3.50.0 and failed analysis on Material API deprecations throughout the existing app. CI is now pinned to the locally tested Flutter 3.41.5; a future SDK migration should be a separate change.
 - Explicit approval to send the six changed source files and test file to Anthropic was received. Claude's read-only review is running; no report yet.
+
+## Live outcome and completed review
+
+- Login plus user-confirmed delivery address enabled successful automatic additions of yoghurt SKU 6665497 and milk SKU 4389993. Reloaded quantities and actual basket lines showed one pack each. The milk SKU is a 6 × 1 l multipack, not a single bottle.
+- Plain porridge SKU 6805933 had a promotion button visibly labelled `(2)`. One click added two, which the service correctly rejected as an unexpected increment. The user explicitly requested reduction to one; a single manual decrement in Coop produced one, then the service verified it after reload. Final actual basket: 1/1/1. No order placed.
+- The saved-product editor only offered predefined ingredients, so temporary extra-product links were added to basket preparation. This enabled porridge without changing saved mappings or recipes.
+- Multi-pack guards now inspect both button signals and the input step. Never assume one click equals one pack.
+- Claude produced two independent read-only reports. The original text-output run was slow; a harmless READY prompt confirmed authentication/API operation. A focused medium-effort review with a direct prompt and streamed output completed. See `docs/claude-review.md` for findings, fixes and remaining hydration uncertainty.
+- Final checks: 27 Flutter tests, 12 selector fixture assertions, clean analysis and a successful Mac release build. Three-product UI evidence preceded the final adapter changes; those changes have automated coverage, with final live retest still open.

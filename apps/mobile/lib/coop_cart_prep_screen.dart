@@ -71,6 +71,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
 
     final Map<String, CoopSavedProduct> products = <String, CoopSavedProduct>{};
     int missing = 0;
+    int merged = 0;
     for (final PurchasableItem item in _selectedItems) {
       final String key = IngredientFormatter.canonicalMergeName(
         item.displayName,
@@ -80,6 +81,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
           ? null
           : coopProductId(product.productUrl);
       if (product != null && id != null) {
+        if (products.containsKey(id)) merged++;
         products[id] = product;
       } else {
         missing++;
@@ -114,6 +116,10 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                     'Bereits vorhandene Packungen zählen mit. Zutatenmengen werden '
                     'noch nicht automatisch in Packungen umgerechnet.',
                   ),
+                  if (merged > 0)
+                    Text(
+                      '$merged Zuordnungen zum gleichen Coop-Produkt wurden zusammengefasst. Bitte die Gesamtmenge dafür wählen.',
+                    ),
                   if (missing > 0)
                     Text(
                       '$missing ausgewählte Artikel ohne gültigen '
@@ -153,6 +159,21 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                         ),
                       ],
                     ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final CoopSavedProduct? product = await _extraProduct();
+                      if (product == null || !context.mounted) return;
+                      final String id = coopProductId(product.productUrl)!;
+                      update(() {
+                        products[id] = product;
+                        targets.putIfAbsent(id, () => 1);
+                      });
+                    },
+                    icon: const Icon(Icons.add_link),
+                    label: const Text(
+                      'Weiteres Coop-Produkt für diesen Einkauf',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -182,6 +203,77 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<CoopSavedProduct?> _extraProduct() async {
+    String name = '';
+    String link = '';
+    final GlobalKey<FormState> form = GlobalKey<FormState>();
+    return showDialog<CoopSavedProduct>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Weiteres Coop-Produkt'),
+        content: SizedBox(
+          width: 480,
+          child: Form(
+            key: form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                TextFormField(
+                  onChanged: (value) => name = value,
+                  decoration: const InputDecoration(labelText: 'Produktname'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Bitte einen Namen eingeben.'
+                      : null,
+                ),
+                TextFormField(
+                  onChanged: (value) => link = value,
+                  decoration: const InputDecoration(
+                    labelText: 'Coop-Produktlink',
+                  ),
+                  validator: (value) =>
+                      coopProductId(value?.trim() ?? '') == null
+                      ? 'Bitte einen gültigen Coop-Produktlink eingeben.'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Nur für diesen Einkauf. Gespeicherte Produkte und Rezepte bleiben unverändert.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!form.currentState!.validate()) return;
+              final Uri url = Uri.parse(link.trim());
+              // Tracking parameters are not needed to identify the SKU.
+              final String cleanUrl = Uri(
+                scheme: url.scheme,
+                host: url.host,
+                path: url.path,
+              ).toString();
+              Navigator.pop(
+                context,
+                CoopSavedProduct(
+                  canonicalKey: 'coop:${coopProductId(cleanUrl)}',
+                  productLabel: name.trim(),
+                  productUrl: cleanUrl,
+                ),
+              );
+            },
+            child: const Text('Übernehmen'),
+          ),
+        ],
       ),
     );
   }

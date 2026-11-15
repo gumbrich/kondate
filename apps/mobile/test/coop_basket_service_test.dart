@@ -13,12 +13,14 @@ class FakePage implements CoopBasketPage {
   bool login = false;
   bool loginAfterClick = false;
   bool available = true;
+  int addQuantity = 1;
   bool persistClicks = true;
   bool malformed = false;
   bool throwAfterClick = false;
   bool clickRejected = false;
   bool wrongProduct = false;
   int increment = 1;
+  bool guardViolation = false;
 
   @override
   Future<CoopBasketSnapshot> read(String productId) async => CoopBasketSnapshot(
@@ -26,13 +28,14 @@ class FakePage implements CoopBasketPage {
     quantity: malformed ? null : visible,
     ready: !malformed,
     loginRequired: login,
-    canAdd: available,
+    canAdd: available && addQuantity == 1,
+    addQuantity: addQuantity,
   );
 
   @override
   Future<bool> addOne(String productId, int expectedQuantity) async {
     if (clickRejected) return false;
-    expect(expectedQuantity, visible);
+    if (expectedQuantity != visible) guardViolation = true;
     clicks++;
     if (loginAfterClick) login = true;
     visible += increment;
@@ -55,6 +58,7 @@ void main() {
     page = FakePage();
     service = CoopBasketService(page: page, wait: (_) async {});
   });
+  tearDown(() => expect(page.guardViolation, isFalse));
 
   Future<CoopBasketResult> run([int target = 1]) =>
       service.ensureQuantity(productUrl: productUrl, targetQuantity: target);
@@ -136,6 +140,15 @@ void main() {
     expect(page.clicks, 0);
   });
 
+  test('multi-pack promotions stop before dispatching a click', () async {
+    page.addQuantity = 2;
+    expect((await run()).outcome, CoopBasketOutcome.blocked);
+    expect(page.clicks, 0);
+    // A manually prepared matching quantity can still be verified.
+    page.persisted = 1;
+    expect((await run()).verified, isTrue);
+  });
+
   test('login loss after dispatch leaves the write uncertain', () async {
     page.loginAfterClick = true;
     expect((await run(3)).outcome, CoopBasketOutcome.uncertain);
@@ -155,6 +168,17 @@ void main() {
       expect(page.clicks, 1);
     },
   );
+
+  test('cancelling before dispatch is safely retryable', () async {
+    final result = await service.ensureQuantity(
+      productUrl: productUrl,
+      targetQuantity: 1,
+      isCancelled: () => true,
+    );
+    expect(result.outcome, CoopBasketOutcome.blocked);
+    expect(page.clicks, 0);
+    expect(page.reloads, 0);
+  });
 
   test('invalid targets and URLs perform no page actions', () async {
     for (final target in <int>[0, -1, 21]) {

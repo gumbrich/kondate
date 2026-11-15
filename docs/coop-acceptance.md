@@ -25,14 +25,16 @@ Do not delete existing basket items to create a test fixture. If the basket alre
 
 ## Result record
 
-Date: 2026-11-15
+Date: 2026-11-15. Device: Mac (macOS 15.6). Tracking: [#32](https://github.com/gumbrich/kondate/issues/32).
 
-Device: Mac (macOS 15.6); Android follow-up pending.
+| SKU | Product | Initial | Target | Final after reload / actual basket | Method |
+| --- | --- | --- | --- | --- | --- |
+| 6665497 | Naturaplan Joghurt Natur 500 g | 0 | 1 | 1 / 1 | Automatic after login/address setup; repeated target stayed 1 |
+| 4389993 | Naturaplan Milch Drink UHT 6 × 1 l | 0 | 1 multipack | 1 / 1 | Automatic; later run stayed 1 |
+| 6805933 | Naturaplan Porridge Nature 400 g | 0 | 1 | 1 / 1 | Promotion added 2; assistant stopped; user approved manual reduction to 1; automatic reload verification passed |
 
-Tracking: [GitHub issue #32](https://github.com/gumbrich/kondate/issues/32).
+The assistant displayed 3/3 verified quantities. This is not a fully unattended three-product success: the porridge correction and login/address steps were manual. The final promotion guard now blocks non-unit or conflicting increments. The pack-target dialog, missing-link warning, temporary extra-product flow, actual basket and repeat-target behavior were exercised. No saved recipe/preference edits and no checkout/order submission.
 
-Native three-product result: **Pending delivery-address confirmation and successful writes**. Automated state-machine tests and public-page inspection are not substitutes for this test.
+Final code checks: 27 Flutter tests and 12 selector fixture assertions passed; analysis clean; Mac release build passed. Navigation race protections added after the live test have automated coverage; a final native retest, slow-network hydration test, live cancellation and Android follow-up remain open.
 
-Pack-target dialog, missing-link warning, product page and sign-in form rendered in the updated Mac app. User signed in successfully. The corrected narrow-layout reader returned 0 for SKU 6665497. A single authenticated add did not produce a confirmed increment; the assistant stopped. Opening the basket requested delivery-address confirmation. User selected porridge as the third product; plain Naturaplan Bio Porridge Nature 400 g (SKU 6805933) was located. Proposed test targets are one pack each; no order submitted.
-
-Record only SKU, desired count, observed count, and pass/fail. Do not commit account identifiers, cookies, delivery details, or credentials.
+Record only SKU/count evidence; never commit account identifiers, cookies, delivery details, or credentials.

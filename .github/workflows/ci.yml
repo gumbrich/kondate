@@ -23,6 +23,7 @@ jobs:
           flutter pub get
           flutter analyze
           flutter test
+          node tool/check_coop_selectors.mjs
 
       - name: Core
         run: |

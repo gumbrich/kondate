@@ -40,6 +40,7 @@ class CoopBasketSnapshot {
   final bool ready;
   final bool loginRequired;
   final bool canAdd;
+  final int? addQuantity;
 
   const CoopBasketSnapshot({
     required this.productId,
@@ -47,6 +48,7 @@ class CoopBasketSnapshot {
     required this.ready,
     this.loginRequired = false,
     this.canAdd = false,
+    this.addQuantity,
   });
 
   factory CoopBasketSnapshot.fromResult(Object value) {
@@ -58,6 +60,9 @@ class CoopBasketSnapshot {
       ready: data['ready'] == true,
       loginRequired: data['loginRequired'] == true,
       canAdd: data['canAdd'] == true,
+      addQuantity: data['addQuantity'] is int
+          ? data['addQuantity'] as int
+          : null,
     );
   }
 }
@@ -128,7 +133,7 @@ class CoopBasketService {
     }
     bool actionMayHaveRun = false;
     try {
-      if (cancelled()) return _cancelled;
+      if (cancelled()) return _cancelled(actionMayHaveRun);
       // Refresh also on retries: a previous action may have succeeded late.
       await page.reload();
       CoopBasketSnapshot? state = await _settled(id, cancelled);
@@ -171,11 +176,14 @@ class CoopBasketService {
         if (!state.canAdd) {
           return CoopBasketResult(
             CoopBasketOutcome.blocked,
-            'Hinzufügen derzeit nicht möglich. Bitte Verfügbarkeit prüfen.',
+            (state.addQuantity ?? 1) != 1
+                ? 'Dieser Coop-Knopf fügt mehrere Packungen hinzu. '
+                      'Bitte bei Coop manuell auf $targetQuantity einstellen.'
+                : 'Hinzufügen derzeit nicht möglich. Bitte Verfügbarkeit prüfen.',
             quantity,
           );
         }
-        if (cancelled()) return _cancelled;
+        if (cancelled()) return _cancelled(actionMayHaveRun);
         // If the bridge fails after dispatch, the click may still have happened.
         actionMayHaveRun = true;
         final bool clicked = await page.addOne(id, quantity);
@@ -186,10 +194,10 @@ class CoopBasketService {
           );
         }
         await wait(const Duration(milliseconds: 1500));
-        if (cancelled()) return _cancelled;
+        if (cancelled()) return _cancelled(actionMayHaveRun);
         await page.reload();
         state = await _settled(id, cancelled);
-        if (cancelled()) return _cancelled;
+        if (cancelled()) return _cancelled(actionMayHaveRun);
         if (state?.loginRequired == true) continue;
         if (state == null || state.quantity != quantity + 1) {
           return CoopBasketResult(
@@ -200,7 +208,7 @@ class CoopBasketService {
           );
         }
       }
-      return _cancelled;
+      return _cancelled(actionMayHaveRun);
     } catch (_) {
       return CoopBasketResult(
         actionMayHaveRun
@@ -211,8 +219,10 @@ class CoopBasketService {
     }
   }
 
-  static const CoopBasketResult _cancelled = CoopBasketResult(
-    CoopBasketOutcome.cancelled,
-    'Gestoppt. Eine bereits ausgelöste Aktion kann noch ankommen; Warenkorb prüfen.',
+  static CoopBasketResult _cancelled(bool actionMayHaveRun) => CoopBasketResult(
+    actionMayHaveRun ? CoopBasketOutcome.cancelled : CoopBasketOutcome.blocked,
+    actionMayHaveRun
+        ? 'Gestoppt. Eine bereits ausgelöste Aktion kann noch ankommen; Warenkorb prüfen.'
+        : 'Gestoppt. Es wurde keine Änderung ausgelöst.',
   );
 }

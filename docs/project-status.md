@@ -2,7 +2,7 @@
 
 Updated 2026-11-15. Primary test device: Mac. Android is checked after substantial improvements.
 
-The next milestone is three known Coop products at explicit pack quantities, confirmed in the basket. Checkout remains manual. A passing unit test does not establish that a live retailer integration works.
+Three known Coop products were confirmed at one pack each in the native Mac basket on 2026-11-15. Yoghurt and milk were added automatically; porridge required an explicitly approved manual correction for a two-pack promotion. Checkout remains manual. A passing unit test does not establish that a live retailer integration works.
 
 ## Evidence levels
 
@@ -20,8 +20,8 @@ The next milestone is three known Coop products at explicit pack quantities, con
 | Recipe import | Parser and backend fixture tests passed on 2026-11-15 | Live import from the user's trusted sites |
 | Recipe search | Implemented but unverified with a live SerpAPI key in this session | Test the deployed backend separately |
 | Household sync | Local API tests passed in the LangGraph branch | Two-device conflict and recovery test |
-| Coop login | Verified sign-in and reload persistence in native Mac WebView on 2026-11-15 | Delivery-address confirmation currently requires user input |
-| Coop basket | Known broken in main: click alone marks success. Replacement on this branch requires persisted SKU quantity and stops on ambiguity | Three-product Mac acceptance [#32](https://github.com/gumbrich/kondate/issues/32); not yet passed |
+| Coop login | Verified sign-in and reload persistence in native Mac WebView on 2026-11-15 | User completed address confirmation; session survived reloads |
+| Coop basket | Main uses click-only success. This branch verified three exact SKU quantities after reload; promotional additions stop for manual handling | Remaining checks in [#32](https://github.com/gumbrich/kondate/issues/32): slow loading, live cancellation and final adapter changes |
 | Ingredient amounts to pack counts | Not implemented automatically | User explicitly chooses total packs per SKU |
 | Coop checkout / order submission | Not implemented as a complete automated flow | Keep manual |
 | Android | Not tested in this session | Regression check after Mac acceptance |
@@ -33,29 +33,29 @@ The next milestone is three known Coop products at explicit pack quantities, con
 | --- | --- | --- |
 | Codex desktop, local terminal, GitHub | Clone, edits, tests, earlier branch push, and issue creation via `gh` succeeded; connector issue creation returned 403 | Primary implementation workflow |
 | Flutter on Mac | Analysis/tests and a debug launch succeeded | Primary app testing |
-| Claude Code | Installed (2.1.312), signed in; authenticated status confirmed | Explicit code-transfer approval received; read-only review running, report pending |
+| Claude Code | Installed (2.1.312), signed in; authenticated status confirmed | Two actual read-only reports received; findings and dispositions in [review record](claude-review.md) |
 | Coop in the in-app browser | Public product pages render; an add briefly showed one pack then reverted; a reload did not retain it | Read-only inspection and diagnostics; not proof of native authenticated cart behavior |
 | Text-based button guessing | Can match unrelated recommendations and does not prove basket state | Replaced with exact SKU-scoped controls |
 | Click result as success | Defect confirmed in source; transient quantity also observed on the live website | Never use as verification |
 | LangGraph / LangSmith Studio | LangGraph installed only for the separate backend experiment; Studio not configured | Not needed for the present development workflow |
 
-## Active work
+## Current branch
 
-Branch: `codex/coop-basket-verification`, based on `main` independently of the LangGraph experiment.
+`codex/coop-basket-verification`, based on main independently of LangGraph. [Draft PR #34](https://github.com/gumbrich/kondate/pull/34).
 
-- Add pack targets and verify the exact product quantity after reloading.
-- Stop on unreadable state, login, wrong product, unexpected quantity, or cancellation.
-- Use the same implementation in the assistant and single-product screen.
-- Record test results and Claude review here and in the pull request.
+Implemented explicit total-pack targets, exact-SKU quantity checks, reload verification, bounded actions, safe stopping, read-only inspection, and temporary extra-product links. Shared logic serves the assistant and single-product screen. Saved recipes and product preferences were preserved.
 
-See [attempts](attempts.md), [development workflow](development-workflow.md), and [Coop acceptance test](coop-acceptance.md).
+## Verification (2026-11-15)
 
-## Branch verification (2026-11-15)
+- Flutter 3.41.5: analysis clean; 27 app tests passed (16 service, 3 navigation adapter, 8 existing).
+- 12 production-JavaScript selector fixture checks passed, including narrow-layout containers and conflicting promotion signals.
+- Mac release build passed with outbound network permission. CI is pinned to the same Flutter version; the latest pushed CI result is recorded in the PR.
+- Native Mac: login and address confirmed by user; three final SKU counts were 1, 1, 1 after reload and in the basket. Yoghurt repeated without duplication; milk also stayed at 1 during the later three-product run.
+- Porridge initially added 2 through Coop's promotion. The assistant stopped as uncertain. User requested reduction to 1; this was done through Coop, then automatically verified after reload. The final guard blocks visible multi-pack additions before clicking.
+- Claude reviewed the six implementation files and service tests. Navigation timing, promotion signals, cancellation/back navigation, and fake-test assertions were tightened. The final navigation guard is covered by automated adapter tests and a release build; its live Mac retest remains pending.
+- Final navigation verification proves a replacement document, but does not establish a server transaction receipt. Slow asynchronous cart hydration remains a follow-up risk; see the review record.
+- Android and live cancellation remain untested. Checkout remains manual; no order submitted.
 
-- `flutter analyze`: clean.
-- `flutter test`: 22 passed (14 basket-service tests plus 8 existing app tests).
-- `flutter build macos --release`: passed; release network-client entitlement included.
-- Native Mac UI: meal plan and shopping list preserved, missing mappings disclosed, explicit pack targets shown, Coop product page and sign-in form loaded.
-- One authenticated add attempt did not persist; assistant stopped as uncertain. Actual basket requested delivery-address confirmation. Successful writes, repeat-run behavior and Android remain unverified. No order submitted.
-- The assistant now uses direct Coop sign-in instead of injecting saved credentials. Existing dedicated login/credential screens remain available.
-- Claude review is running after explicit approval. [PR #34](https://github.com/gumbrich/kondate/pull/34) remains draft until review and live acceptance are resolved. CI is pinned to Flutter 3.41.5 after the unpinned newer SDK failed existing Material imports.
+The assistant uses direct Coop sign-in instead of injecting saved credentials. Existing dedicated login/credential screens remain available. No new runtime dependency was added; the existing WebView platform interface is now explicitly declared for tests.
+
+See [attempts](attempts.md), [development workflow](development-workflow.md), [Coop acceptance](coop-acceptance.md), and [Claude review](claude-review.md).
