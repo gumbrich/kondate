@@ -3,9 +3,111 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app_state.dart';
 import 'package:mobile/ingredient_formatter.dart';
 import 'package:mobile/meal_spelling.dart';
+import 'package:mobile/purchasable_item_mapper.dart';
 import 'package:mobile/shopping_purchase_plan.dart';
 
 void main() {
+  test(
+    'count-only manual entry keeps its ingredient words and unknown amount',
+    () {
+      final item = buildShoppingPurchases(
+        KondateAppState.initial().addManualShoppingItem('2 Rote Zwiebeln'),
+      ).single;
+      expect(item.displayName.toLowerCase(), '2 rote zwiebeln');
+      expect(item.amountDescription, contains('Menge offen'));
+      expect(
+        IngredientFormatter.canonicalMergeName('Rote Zwiebeln'),
+        isNot('paprika_rot'),
+      );
+    },
+  );
+  test('ingredient identity and explicit units survive retailer mapping', () {
+    for (final name in [
+      'Rote Linsen',
+      'Gelbe Linsen',
+      'Rote Bete',
+      'Kokosmilch',
+      'Hafermilch',
+      'Buttermilch',
+      'Erdnussbutter',
+      'Paniermehl',
+      'Mandelmehl',
+      'Rindshackfleisch',
+      'Hackfleisch vom Rind',
+      'Süsskartoffeln',
+      'Frühlingszwiebeln, geschnitten',
+      'Sauerkraut',
+      'Bauernbrot',
+    ]) {
+      final item = PurchasableItemMapper.fromIngredient(
+        name: name,
+        quantity: 200,
+        unit: 'g',
+      );
+      expect(item.displayName.toLowerCase(), name.toLowerCase(), reason: name);
+      expect(item.unit, 'g', reason: name);
+      expect(
+        item.coopSearchQuery,
+        isNot('hackfleisch gemischt 500g'),
+        reason: name,
+      );
+      expect(item.coopSearchQuery, isNot('milch 1l'), reason: name);
+      expect(
+        item.coopSearchQuery,
+        isNot('kartoffeln festkochend'),
+        reason: name,
+      );
+    }
+    for (final entry in [
+      ('Zwiebeln, gehackt', 'g'),
+      ('Butter', 'EL'),
+      ('Petersilie, gehackt', 'g'),
+      ('Lasagneplatten', 'Stk.'),
+      ('Sahne', 'Becher'),
+    ]) {
+      expect(IngredientParser.parse(entry.$1, 20, entry.$2).unit, entry.$2);
+    }
+    for (final name in ['Tomaten', 'Kartoffeln']) {
+      expect(
+        PurchasableItemMapper.fromIngredient(
+          name: name,
+          quantity: 3,
+          unit: '',
+        ).unit,
+        isNot('g'),
+      );
+    }
+    expect(
+      IngredientFormatter.format(quantity: 500, unit: 'g', name: 'Tomaten'),
+      '500 g Tomaten',
+    );
+    expect(IngredientFormatter.canonicalMergeName('Möhren'), 'karotte');
+    expect(IngredientFormatter.canonicalMergeName('Moehren'), 'karotte');
+    expect(
+      PurchasableItemMapper.fromIngredient(
+        name: 'Saure Sahne',
+        quantity: 200,
+        unit: 'g',
+      ).coopSearchQuery,
+      'saure sahne',
+    );
+    expect(
+      IngredientParser.parse(
+        'Gehackte Tomaten 400 g, konserviert',
+        400,
+        'g',
+      ).unit,
+      'g',
+    );
+    expect(
+      PurchasableItemMapper.fromIngredient(
+        name: 'Tomaten',
+        quantity: 500,
+        unit: 'g',
+      ).preferredPackage,
+      isNull,
+    );
+  });
   test('nearby cooking words stay local and preserve separators', () {
     expect(
       MealSpelling.suggestions('Zitronenrisatho'),

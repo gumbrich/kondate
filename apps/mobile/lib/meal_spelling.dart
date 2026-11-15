@@ -52,14 +52,21 @@ with and or without of for in on a an the de du al alla au
       .replaceAll('ê', 'e')
       .replaceAll('ß', 'ss');
 
+  static final Map<String, String> _baseVocabulary = (() {
+    final result = <String, String>{};
+    for (final match in _tokens.allMatches(words)) {
+      final word = match.group(0)!;
+      result.putIfAbsent(_key(word), () => word);
+    }
+    return result;
+  })();
+
   static List<String> suggestions(
     String text, {
     Iterable<String> knownPhrases = const [],
   }) {
-    final vocabulary = <String, String>{};
-    for (final match in _tokens.allMatches(
-      [words, ...knownPhrases].join(' '),
-    )) {
+    final vocabulary = Map<String, String>.of(_baseVocabulary);
+    for (final match in _tokens.allMatches(knownPhrases.join(' '))) {
       final word = match.group(0)!;
       vocabulary.putIfAbsent(_key(word), () => word);
     }

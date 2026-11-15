@@ -256,6 +256,10 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                       update(() {
                         products[id] = product;
                         targets.putIfAbsent(id, () => 1);
+                        requirements.putIfAbsent(
+                          id,
+                          () => ['Zusätzlich gewählt'],
+                        );
                       });
                     },
                     icon: const Icon(Icons.add_link),
@@ -456,7 +460,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                       title: Text(item.displayName),
                       subtitle: Text(
                         'Menge: ${_quantityText(item)}\n'
-                        'Produkt: ${_saved[_key(item)]?.productLabel ?? 'Noch auswählen'}\n'
+                        'Produkt: ${_saved[_key(item)]?.productLabel ?? 'Noch auswählen'}${_saved[_key(item)] != null && coopProductId(_saved[_key(item)]!.productUrl) == null ? ' (ungültiger Link)' : ''}\n'
                         'Suche: $searchQuery'
                         '${item.coopPreferredProductLabel != null && item.coopPreferredProductLabel!.isNotEmpty ? '\nProfil: ${item.coopPreferredProductLabel}' : ''}',
                       ),

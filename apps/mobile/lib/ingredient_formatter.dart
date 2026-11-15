@@ -1,16 +1,25 @@
 class IngredientFormatter {
+  static bool isCannedTomatoProduct(String name) => const {
+    'geschälte tomaten',
+    'gehackte tomaten',
+    'passierte tomaten',
+    'stückige tomaten',
+  }.contains(name.toLowerCase().trim());
+
   static String format({
     required double quantity,
     required String unit,
     required String name,
   }) {
-    final IngredientInterpretation parsed =
-        IngredientParser.parse(name, quantity, unit);
+    final IngredientInterpretation parsed = IngredientParser.parse(
+      name,
+      quantity,
+      unit,
+    );
 
-    final String baseUnit =
-        (parsed.unit == null || parsed.unit!.isEmpty)
-            ? _inferUnit(parsed.name)
-            : parsed.unit!;
+    final String baseUnit = (parsed.unit == null || parsed.unit!.isEmpty)
+        ? _inferUnit(parsed.name)
+        : parsed.unit!;
 
     final _PackagingResult packaged = _applyPackaging(
       name: parsed.name,
@@ -53,9 +62,20 @@ class IngredientFormatter {
       case 'knoblauchzehe':
       case 'knoblauchzehen':
         return 'knoblauchzehe';
+      case 'möhre':
+      case 'möhren':
       case 'karotte':
       case 'karotten':
         return 'karotte';
+      case 'tomate':
+      case 'tomaten':
+        return 'tomate';
+      case 'kartoffel':
+      case 'kartoffeln':
+        return 'kartoffel';
+      case 'champignon':
+      case 'champignons':
+        return 'champignon';
       case 'ei':
       case 'eier':
         return 'ei';
@@ -109,20 +129,16 @@ class IngredientFormatter {
       return 'g';
     }
 
-    if (n.contains('spaghetti') ||
-        n.contains('nudeln') ||
-        n.contains('reis')) {
+    if (n.contains('spaghetti') || n.contains('nudeln') || n.contains('reis')) {
       return 'g';
     }
 
-    if (n.contains('tomaten') ||
-        n.contains('tomatenmark') ||
+    if (n.contains('tomatenmark') ||
         n.contains('ketchup') ||
         n.contains('sojasoße') ||
         n.contains('hackfleisch') ||
         n.contains('mehl') ||
-        n.contains('butter') ||
-        n.contains('kartoffel')) {
+        n.contains('butter')) {
       return 'g';
     }
 
@@ -137,7 +153,7 @@ class IngredientFormatter {
   }) {
     final String n = name.toLowerCase();
 
-    if (n.contains('tomaten') && unit == 'g') {
+    if (isCannedTomatoProduct(n) && unit == 'g') {
       const double packSize = 400;
       if (quantity >= 300) {
         final int cans = (quantity / packSize).round().clamp(1, 999);
@@ -254,8 +270,9 @@ class IngredientParser {
 
     String? note;
 
-    final Match? amountMatch =
-        RegExp(r'\b(\d+\s?(?:g|kg|ml|l))\b').firstMatch(name);
+    final Match? amountMatch = RegExp(
+      r'\b(\d+\s?(?:g|kg|ml|l))\b',
+    ).firstMatch(name);
     if (amountMatch != null) {
       note = amountMatch.group(1);
       name = name.replaceFirst(amountMatch.group(0)!, '');
@@ -292,9 +309,15 @@ class IngredientParser {
     name = name.replaceAll(RegExp(r'\bkartoffel\s+n\b'), 'kartoffeln');
     name = name.replaceAll(RegExp(r'\bsuppenhuh\s+n\b'), 'suppenhuhn');
 
-    name = name.replaceAll(RegExp(r'\btomaten geschälte\b'), 'geschälte tomaten');
+    name = name.replaceAll(
+      RegExp(r'\btomaten geschälte\b'),
+      'geschälte tomaten',
+    );
     name = name.replaceAll(RegExp(r'\btomaten gehackte\b'), 'gehackte tomaten');
-    name = name.replaceAll(RegExp(r'\btomaten passierte\b'), 'passierte tomaten');
+    name = name.replaceAll(
+      RegExp(r'\btomaten passierte\b'),
+      'passierte tomaten',
+    );
     name = name.replaceAll(RegExp(r'\btomaten stückige\b'), 'stückige tomaten');
     name = name.replaceAll(
       RegExp(r'\bhackfleisch gemischte?s\b'),
@@ -332,17 +355,10 @@ class IngredientParser {
       name = 'sojasoße';
     }
 
-    if (name.contains('kartoffel') && name.contains('festkochend')) {
+    if (RegExp(r'^festkochende[nr]? kartoffeln?$').hasMatch(name)) {
       name = quantity == 1
           ? 'festkochende kartoffel'
           : 'festkochende kartoffeln';
-    }
-
-    if (name.contains('gelbe') && !name.contains('paprika')) {
-      name = 'gelbe paprika';
-    }
-    if (name.contains('rote') && !name.contains('paprika')) {
-      name = 'rote paprika';
     }
 
     name = _normalizeWhitespace(name);
@@ -369,7 +385,9 @@ class IngredientParser {
     ])) {
       final String normalizedTomatoes = _normalizeTomatoProduct(name);
 
-      final bool canBeCan = note != null &&
+      final bool canBeCan =
+          (_mapUnit(rawUnit).isEmpty || _mapUnit(rawUnit) == 'Stk.') &&
+          note != null &&
           (note.contains('400 g') ||
               note.contains('500 g') ||
               note.contains('800 g'));
@@ -409,7 +427,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('hackfleisch')) {
+    if (name == 'hackfleisch') {
       return IngredientInterpretation(
         name: 'Gemischtes Hackfleisch',
         displayQuantity: quantity,
@@ -418,7 +436,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('rinderhack')) {
+    if (name == 'rinderhack') {
       return IngredientInterpretation(
         name: 'Rinderhackfleisch',
         displayQuantity: quantity,
@@ -445,10 +463,8 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('kartoffel')) {
-      final String displayName = quantity == 1
-          ? 'festkochende Kartoffel'
-          : 'festkochende Kartoffeln';
+    if (name == 'kartoffel') {
+      final String displayName = quantity == 1 ? 'Kartoffel' : 'Kartoffeln';
       return IngredientInterpretation(
         name: displayName,
         displayQuantity: quantity,
@@ -503,15 +519,15 @@ class IngredientParser {
         name: name.contains('hühner')
             ? 'Hühnerbrühe'
             : name.contains('gemüse')
-                ? 'Gemüsebrühe'
-                : 'Brühe',
+            ? 'Gemüsebrühe'
+            : 'Brühe',
         displayQuantity: quantity,
         unit: _mapUnit(rawUnit).isEmpty ? 'ml' : _mapUnit(rawUnit),
         note: note,
       );
     }
 
-    if (name.contains('zwiebel')) {
+    if (name == 'zwiebel') {
       final String displayName = quantity == 1 ? 'Zwiebel' : 'Zwiebeln';
       return IngredientInterpretation(
         name: displayName,
@@ -522,8 +538,9 @@ class IngredientParser {
     }
 
     if (name.contains('knoblauch')) {
-      final String displayName =
-          quantity == 1 ? 'Knoblauchzehe' : 'Knoblauchzehen';
+      final String displayName = quantity == 1
+          ? 'Knoblauchzehe'
+          : 'Knoblauchzehen';
       return IngredientInterpretation(
         name: displayName,
         displayQuantity: quantity,
@@ -597,7 +614,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('butter')) {
+    if (name == 'butter') {
       return IngredientInterpretation(
         name: 'Butter',
         displayQuantity: quantity,
@@ -606,7 +623,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('mehl')) {
+    if (name == 'mehl') {
       return IngredientInterpretation(
         name: 'Mehl',
         displayQuantity: quantity,
@@ -615,7 +632,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('milch')) {
+    if (name == 'milch') {
       return IngredientInterpretation(
         name: 'Milch',
         displayQuantity: quantity,
@@ -624,7 +641,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('sahne')) {
+    if (name == 'sahne') {
       return IngredientInterpretation(
         name: 'Sahne',
         displayQuantity: quantity,
@@ -633,7 +650,7 @@ class IngredientParser {
       );
     }
 
-    if (name.contains('joghurt')) {
+    if (name == 'joghurt') {
       return IngredientInterpretation(
         name: 'Joghurt',
         displayQuantity: quantity,
@@ -709,20 +726,22 @@ class IngredientParser {
 
   static String _preferWeightUnit(String rawUnit, {required String fallback}) {
     final String mapped = _mapUnit(rawUnit);
-    if (mapped == 'g' || mapped == 'kg') return mapped;
+    if (mapped.isNotEmpty) return mapped;
     return fallback;
   }
 
   static String _preferVolumeUnit(String rawUnit, {required String fallback}) {
     final String mapped = _mapUnit(rawUnit);
-    if (mapped == 'ml' || mapped == 'l') return mapped;
+    if (mapped.isNotEmpty) return mapped;
     return fallback;
   }
 
-  static String _preferPieceLikeUnit(String rawUnit,
-      {required String fallback}) {
+  static String _preferPieceLikeUnit(
+    String rawUnit, {
+    required String fallback,
+  }) {
     final String mapped = _mapUnit(rawUnit);
-    if (mapped == 'Stk.' || mapped == 'Bund') return mapped;
+    if (mapped.isNotEmpty) return mapped;
     return fallback;
   }
 
@@ -754,9 +773,20 @@ class IngredientParser {
     final String u = rawUnit.toLowerCase().trim();
 
     const shortUnits = <String, String>{
-      'g': 'g', 'kg': 'kg', 'ml': 'ml', 'l': 'l', 'tl': 'TL', 'el': 'EL',
-      'stk.': 'Stk.', 'stk': 'Stk.', 'stück': 'Stk.', 'bund': 'Bund',
-      'dose': 'Dose', 'dosen': 'Dose', 'pck.': 'Pck.', 'prise': 'Prise',
+      'g': 'g',
+      'kg': 'kg',
+      'ml': 'ml',
+      'l': 'l',
+      'tl': 'TL',
+      'el': 'EL',
+      'stk.': 'Stk.',
+      'stk': 'Stk.',
+      'stück': 'Stk.',
+      'bund': 'Bund',
+      'dose': 'Dose',
+      'dosen': 'Dose',
+      'pck.': 'Pck.',
+      'prise': 'Prise',
       'zehe': 'Zehe',
     };
     if (shortUnits.containsKey(u)) return shortUnits[u]!;
@@ -769,22 +799,30 @@ class IngredientParser {
     if (u.contains('teaspoon')) return 'TL';
     if (u.contains('tablespoon')) return 'EL';
 
-    return '';
+    return rawUnit.trim();
   }
 
   static String _normalizeWhitespace(String s) {
     return s.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  static String _normalizeAsciiVariants(String s) {
-    return s
-        .replaceAll('ae', 'ä')
-        .replaceAll('oe', 'ö')
-        .replaceAll('ue', 'ü')
-        .replaceAll('Ae', 'Ä')
-        .replaceAll('Oe', 'Ö')
-        .replaceAll('Ue', 'Ü');
-  }
+  // Convert only known food-word transliterations. Global ue/oe/ae replacement
+  // corrupts unrelated words such as Sauerkraut and Bauernbrot.
+  static final _asciiWords = <String, String>{
+    for (final phrase in _exactCorrections.keys)
+      for (final word in phrase.split(' '))
+        if (RegExp('[äöü]').hasMatch(word))
+          word
+                  .replaceAll('ä', 'ae')
+                  .replaceAll('ö', 'oe')
+                  .replaceAll('ü', 'ue'):
+              word,
+  };
+
+  static String _normalizeAsciiVariants(String s) => s.replaceAllMapped(
+    RegExp(r'[A-Za-z]+'),
+    (match) => _asciiWords[match.group(0)!.toLowerCase()] ?? match.group(0)!,
+  );
 
   static String _titleCaseGerman(String s) {
     if (s.isEmpty) return s;
@@ -960,7 +998,7 @@ class IngredientParser {
     'lasagneplatten': 'Lasagneplatten',
     'lasagneplatte': 'Lasagneplatte',
     'ei': 'Ei',
-    'eier': 'Eier'
+    'eier': 'Eier',
   };
 }
 

@@ -16,6 +16,37 @@ void main() {
   );
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('invalid saved product is labelled and blocks the assistant', (
+    tester,
+  ) async {
+    await CoopSavedProductsStore().saveProduct(
+      const CoopSavedProduct(
+        canonicalKey: 'feta',
+        productLabel: 'Broken link',
+        productUrl: 'https://example.com/p/12345',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CoopCartPrepScreen(
+          items: [
+            PurchasableItemMapper.fromIngredient(
+              name: 'Feta',
+              quantity: 200,
+              unit: 'g',
+            ),
+          ],
+          assistantBuilder: (_) => throw StateError('Must not start'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('(ungültiger Link)'), findsOneWidget);
+    await tester.tap(find.text('Coop-Assistent starten'));
+    await tester.pumpAndSettle();
+    expect(find.text('Für jede Zutat ein Produkt wählen'), findsOneWidget);
+  });
+
   testWidgets(
     'missing products block; chosen product persists and target reaches assistant',
     (tester) async {
