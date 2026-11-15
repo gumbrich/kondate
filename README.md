@@ -19,5 +19,6 @@ Cross-platform Flutter app for:
 - [Previous attempts and known failures](docs/attempts.md)
 - [Codex and Claude development workflow](docs/development-workflow.md)
 - [Three-product Coop acceptance test](docs/coop-acceptance.md)
+- [Photo-to-week-plan usage, setup, and acceptance](docs/photo-week-plan.md)
 
 Mac is the primary test device; Android is checked after substantial improvements.

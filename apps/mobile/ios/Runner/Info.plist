@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Fotografiere deinen Wochenplan, um die Mahlzeiten zu übernehmen.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wähle ein Foto deines Wochenplans.</string>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
