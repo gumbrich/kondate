@@ -4,6 +4,8 @@ Preserve unsuccessful approaches here so the next agent does not repeat them. Da
 
 ## 2026-11-23 Android phone build
 
+- GitHub release creation rejected the abbreviated commit with HTTP 422 (`target_commitish is invalid`); using the full pushed commit SHA succeeded. The published APK digest matches the local verified artifact.
+
 - The new real-app workflow at 390 × 844 exposed two actual layout overflows: long titles in the recipe dropdown and a product-choice button inside a Row. Expanded/ellipsized the dropdown and allowed the button layout to wrap. The same workflow then passed as both a widget test and an Android device integration test.
 - The initial test's `scrollUntilVisible` matched multiple scrollable widgets; use `ensureVisible` on the already-built home-screen targets instead. Preferences are mocked so these tests never touch saved household data.
 - A fresh isolated `Kondate_QA` Android virtual device uses the installed API 36.1 arm64 image. AVD creation first failed without Java; setting JAVA_HOME to Android Studio's bundled JBR resolved it. Existing user AVDs were left untouched.

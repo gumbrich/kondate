@@ -42,7 +42,7 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 
 ## Android testing build, 2026-11-23
 
-Task branch: `codex/android-phone-build-20261123`, based on ingredient-selection commit `1eec664`. Version `1.0.1+2`; Android launcher name is now Kondate. Existing package ID and local test signing identity are retained. No data migration or backend change.
+Task branch: `codex/android-phone-build-20261123` ([draft PR #37](https://github.com/gumbrich/kondate/pull/37)), based on ingredient-selection commit `1eec664`. APK source commit: `675625d`; [published testing build](https://github.com/gumbrich/kondate/releases/tag/android-test-1.0.1). Version `1.0.1+2`; Android launcher name is now Kondate. Existing package ID and local test signing identity are retained. No data migration or backend change.
 
 - **Verified:** clean Flutter analysis; 55 app tests, 15 core tests, 2 parser tests and 12 production Coop selector checks passed. Native synthetic seven-day recognition passed on both Mac and an isolated Android API 36.1 arm64 emulator. The complete manual-recipe → Monday recipe link → shopping list → Coop preparation workflow also passed on that emulator using isolated preferences and no retailer writes.
 - **Build verified:** universal release-mode APK (Android API 24+) built, signature verified, and installed/launched on the isolated emulator. Version/label/package metadata checked. Release visual inspection was unavailable because the UI tool could not attach to the emulator; device integration tests above used debug mode.

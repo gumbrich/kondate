@@ -4,7 +4,7 @@ Version **1.0.1 (build 2)**, prepared 2026-11-23 from `codex/android-phone-build
 
 ## Install on your phone
 
-Download `kondate-1.0.1-android-test.apk` from the repository's matching GitHub prerelease on your Android phone, open the download, and allow installation from that browser if Android asks. The launcher calls the app **Kondate**.
+Download [kondate-1.0.1-android-test.apk](https://github.com/gumbrich/kondate/releases/download/android-test-1.0.1/kondate-1.0.1-android-test.apk) from the [GitHub prerelease](https://github.com/gumbrich/kondate/releases/tag/android-test-1.0.1) on your Android phone, open the download, and allow installation from that browser if Android asks. The launcher calls the app **Kondate**.
 
 This is a release-mode personal testing build, signed with the existing local Android test key, not a Play Store production release. Install it over a compatible existing Kondate installation to keep local data. If Android reports a signature conflict, keep the old app installed and report the message; uninstalling would remove its local data. Mac-local recipes and login sessions do not automatically appear on a new phone installation.
 
