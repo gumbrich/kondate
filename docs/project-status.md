@@ -1,6 +1,6 @@
 # Kondate project status
 
-Updated 2026-11-15. Primary test device: Mac. Android is checked after substantial improvements.
+Updated 2026-11-23. Primary test device: Mac. Android is checked after substantial improvements.
 
 Three known Coop products were confirmed at one pack each in the native Mac basket on 2026-11-15. Yoghurt and milk were added automatically; porridge required an explicitly approved manual correction for a two-pack promotion. Checkout remains manual. A passing unit test does not establish that a live retailer integration works.
 
@@ -24,7 +24,7 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 | Coop basket | Main uses click-only success. This branch verified three exact SKU quantities after reload; promotional additions stop for manual handling | Remaining checks in [#32](https://github.com/gumbrich/kondate/issues/32): slow loading and live cancellation |
 | Ingredient amounts to pack counts | Not implemented automatically | User explicitly chooses total packs per SKU |
 | Coop checkout / order submission | Not implemented as a complete automated flow | Keep manual |
-| Android | Not tested in this session | Regression check after Mac acceptance |
+| Android | API 36.1 arm64 emulator: native seven-day OCR and recipe → weekly plan → shopping preparation tests passed on 2026-11-23 | Physical phone camera, activity recovery and authenticated Coop behavior remain unverified |
 | LangGraph recipe discovery | Tested and pushed separately as `codex/langgraph-recipe-search`, commit `bee2c3f`; not part of this Coop branch | Optional app feature; not required for coding agents |
 | Photo to weekly plan | On-device Mac/Android implementation on `codex/photo-week-plan`; Mac camera/image preview, local OCR and cancellation observed; seven-day native printed-example test passed | Handwriting remains inaccurate; physical Android and activity-recovery acceptance pending; see [photo guide](photo-week-plan.md) |
 
@@ -40,7 +40,19 @@ Three known Coop products were confirmed at one pack each in the native Mac bask
 | Click result as success | Defect confirmed in source; transient quantity also observed on the live website | Never use as verification |
 | LangGraph / LangSmith Studio | LangGraph installed only for the separate backend experiment; Studio not configured | Not needed for the present development workflow |
 
-## Current branch
+## Android testing build, 2026-11-23
+
+Task branch: `codex/android-phone-build-20261123` ([draft PR #37](https://github.com/gumbrich/kondate/pull/37)), based on ingredient-selection commit `1eec664`. APK source commit: `675625d`; [published testing build](https://github.com/gumbrich/kondate/releases/tag/android-test-1.0.1). Version `1.0.1+2`; Android launcher name is now Kondate. Existing package ID and local test signing identity are retained. No data migration or backend change.
+
+- **Verified:** clean Flutter analysis; 55 app tests, 15 core tests, 2 parser tests and 12 production Coop selector checks passed. Native synthetic seven-day recognition passed on both Mac and an isolated Android API 36.1 arm64 emulator. The complete manual-recipe → Monday recipe link → shopping list → Coop preparation workflow also passed on that emulator using isolated preferences and no retailer writes.
+- **Build verified:** universal release-mode APK (Android API 24+) built, signature verified, and installed/launched on the isolated emulator. Version/label/package metadata checked. Release visual inspection was unavailable because the UI tool could not attach to the emulator; device integration tests above used debug mode.
+- **Fixed:** a long recipe name overflowed the day editor's dropdown, and the product-selection button overflowed the phone-width preparation screen. A new 390 × 844 regression test covers both and proves unresolved ingredients block continuation rather than silently disappearing.
+- **Unverified:** physical Android camera/gallery, first use in airplane mode, activity-death recovery, live backend synchronization and Android Coop basket behavior. Printed-example OCR is not evidence of handwriting accuracy. No live basket mutation was attempted this session.
+- **Known limitation:** automatic Coop additions are still unreliable in the previously observed feta case; manual completion and persisted-quantity checks remain necessary. A photographed dish name still needs a linked recipe or manually supplied ingredients.
+
+Build/install and repeatable checks: [Android testing](android-testing.md). Historical evidence below remains dated; the previous Claude review does not cover this turn's layout-only changes.
+
+## Previous ingredient branch
 
 Current follow-up: `codex/ingredient-coop-selection` ([draft PR #36](https://github.com/gumbrich/kondate/pull/36)), based on photo commit `d7c1700`. Adds local German/Swiss German/English cooking-word suggestions, live native Coop product selection for arbitrary ingredients, manual shopping items in shop preparation, mandatory resolution of selected missing products, and preservation of custom saved mappings. Fixes rice being classified as eggs and short units/kilograms being lost. Unknown ingredient amounts are labelled explicitly; pack totals remain user-selected.
 

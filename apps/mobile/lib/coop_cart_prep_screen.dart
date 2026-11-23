@@ -472,7 +472,7 @@ class _CoopCartPrepScreenState extends State<CoopCartPrepScreen> {
                         right: 16,
                         bottom: 12,
                       ),
-                      child: Row(
+                      child: Wrap(
                         children: <Widget>[
                           FilledButton.tonalIcon(
                             onPressed: checked && !_busy

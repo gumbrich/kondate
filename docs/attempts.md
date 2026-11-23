@@ -2,6 +2,19 @@
 
 Preserve unsuccessful approaches here so the next agent does not repeat them. Dates below are observation dates unless specified otherwise. Never include passwords, cookies, tokens, personal addresses, or private basket contents.
 
+## 2026-11-23 Android phone build
+
+- GitHub release creation rejected the abbreviated commit with HTTP 422 (`target_commitish is invalid`); using the full pushed commit SHA succeeded. The published APK digest matches the local verified artifact.
+
+- The new real-app workflow at 390 × 844 exposed two actual layout overflows: long titles in the recipe dropdown and a product-choice button inside a Row. Expanded/ellipsized the dropdown and allowed the button layout to wrap. The same workflow then passed as both a widget test and an Android device integration test.
+- The initial test's `scrollUntilVisible` matched multiple scrollable widgets; use `ensureVisible` on the already-built home-screen targets instead. Preferences are mocked so these tests never touch saved household data.
+- A fresh isolated `Kondate_QA` Android virtual device uses the installed API 36.1 arm64 image. AVD creation first failed without Java; setting JAVA_HOME to Android Studio's bundled JBR resolved it. Existing user AVDs were left untouched.
+- Mac and Android native generated seven-day OCR tests passed. The emulator was not in airplane mode, and the image was printed synthetic text; neither proves offline first-use behavior or difficult handwriting accuracy.
+- A release build overlapped with Flutter test/Mac-run commands and failed because GeneratedPluginRegistrant.java still referenced the test-only IntegrationTestPlugin. Stop overlapping Flutter device runs, then run a normal `flutter build apk --release` with dependency/plugin regeneration. Do not patch generated registration files or add test plugins to production dependencies.
+- The Mac normal-app smoke launch ran, but CUA could not attach to its window (`cgWindowNotFound`); duplicate running builds share the bundle ID. Full-path selection also failed, and `cua.computer.launch_app` is not available on this Mac. Do not count this as a visually verified normal-app smoke test. Native Mac OCR did pass independently.
+- The regenerated normal release build succeeded. Its signed APK installed and launched through Flutter on the isolated emulator. CUA could not resolve the emulator executable by name or full path, so release visual inspection is unverified; no alternate UI automation was used.
+- No credentials, photos, account data or household state are included in the Android build/test fixtures. No retailer basket write, checkout or order was performed.
+
 ## 2026-11-15 photo-to-week-plan
 
 ### Ingredient selection and spelling follow-up

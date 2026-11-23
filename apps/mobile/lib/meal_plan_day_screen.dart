@@ -78,8 +78,9 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
     if (importedRecipe == null) return;
 
     setState(() {
-      final bool alreadyExists =
-          _recipes.any((Recipe r) => r.id == importedRecipe.id);
+      final bool alreadyExists = _recipes.any(
+        (Recipe r) => r.id == importedRecipe.id,
+      );
       if (!alreadyExists) {
         _recipes.add(importedRecipe);
       }
@@ -116,13 +117,12 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool selectedRecipeStillExists = _selectedRecipeId != null &&
+    final bool selectedRecipeStillExists =
+        _selectedRecipeId != null &&
         _recipes.any((Recipe recipe) => recipe.id == _selectedRecipeId);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.weekdayLabel),
-      ),
+      appBar: AppBar(title: Text(widget.weekdayLabel)),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -136,11 +136,11 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              initialValue:
-                  selectedRecipeStillExists ? _selectedRecipeId : null,
-              decoration: const InputDecoration(
-                labelText: 'Recipe',
-              ),
+              isExpanded: true,
+              initialValue: selectedRecipeStillExists
+                  ? _selectedRecipeId
+                  : null,
+              decoration: const InputDecoration(labelText: 'Recipe'),
               items: <DropdownMenuItem<String?>>[
                 const DropdownMenuItem<String?>(
                   value: null,
@@ -149,7 +149,14 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
                 ..._recipes.map((Recipe recipe) {
                   return DropdownMenuItem<String?>(
                     value: recipe.id,
-                    child: Text(recipe.title),
+                    child: Tooltip(
+                      message: recipe.title,
+                      child: Text(
+                        recipe.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   );
                 }),
               ],
@@ -169,10 +176,7 @@ class _MealPlanDayScreenState extends State<MealPlanDayScreen> {
             ),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
             const Spacer(),
             Row(
@@ -225,15 +229,10 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   Future<void> _openCandidateInBrowser(
     RecipeSuggestionCandidate candidate,
   ) async {
-    await launchUrl(
-      candidate.openUri,
-      mode: LaunchMode.externalApplication,
-    );
+    await launchUrl(candidate.openUri, mode: LaunchMode.externalApplication);
   }
 
-  Future<void> _importCandidate(
-    RecipeSuggestionCandidate candidate,
-  ) async {
+  Future<void> _importCandidate(RecipeSuggestionCandidate candidate) async {
     final String key = candidate.openUri.toString();
 
     setState(() {
@@ -272,26 +271,17 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
         trustedSites: widget.trustedSites,
         topN: widget.topN,
       ),
-      builder: (
-        BuildContext context,
-        AsyncSnapshot<RecipeSearchDebugResult> snapshot,
-      ) {
+      builder: (BuildContext context, AsyncSnapshot<RecipeSearchDebugResult> snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return Scaffold(
-            appBar: AppBar(
-              title: Text('Suggestions: ${widget.dishIdea}'),
-            ),
-            body: const Center(
-              child: CircularProgressIndicator(),
-            ),
+            appBar: AppBar(title: Text('Suggestions: ${widget.dishIdea}')),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
 
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: AppBar(
-              title: Text('Suggestions: ${widget.dishIdea}'),
-            ),
+            appBar: AppBar(title: Text('Suggestions: ${widget.dishIdea}')),
             body: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
@@ -302,7 +292,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
           );
         }
 
-        final RecipeSearchDebugResult debug = snapshot.data ??
+        final RecipeSearchDebugResult debug =
+            snapshot.data ??
             const RecipeSearchDebugResult(
               candidates: <RecipeSuggestionCandidate>[],
               debugLines: <String>[],
@@ -311,16 +302,12 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
         final List<RecipeSuggestionCandidate> candidates = debug.candidates;
 
         return Scaffold(
-          appBar: AppBar(
-            title: Text('Suggestions: ${widget.dishIdea}'),
-          ),
+          appBar: AppBar(title: Text('Suggestions: ${widget.dishIdea}')),
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: ListView(
               children: <Widget>[
-                Text(
-                  'Trusted sites: ${widget.trustedSites.join(', ')}',
-                ),
+                Text('Trusted sites: ${widget.trustedSites.join(', ')}'),
                 const SizedBox(height: 8),
                 const Text(
                   'Tap a suggestion to import it directly. Use the external-link button only if you want to inspect the page first.',
@@ -358,8 +345,9 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                         tooltip: 'Open in browser',
                         onPressed: () => _openCandidateInBrowser(candidate),
                       ),
-                      onTap:
-                          importing ? null : () => _importCandidate(candidate),
+                      onTap: importing
+                          ? null
+                          : () => _importCandidate(candidate),
                     ),
                   );
                 }),
